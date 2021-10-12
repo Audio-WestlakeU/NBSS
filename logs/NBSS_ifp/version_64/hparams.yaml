@@ -1,0 +1,29 @@
+activation: ''
+band_num: 1
+channels:
+- 0
+- 1
+- 2
+- 3
+- 4
+- 5
+- 6
+- 7
+exp_name: final test
+ft_len: 512
+ft_overlap: 256
+hidden_size:
+- 256
+- 128
+layer_norm: false
+learning_rate: 0.001
+lr_scheduler: ReduceLROnPlateau
+lr_scheduler_kwargs:
+  factor: 0.5
+  min_lr: 0.0001
+  mode: min
+  patience: 10
+optimizer_kwargs: {}
+ref_channel: 0
+speaker_num: 2
+target_type: WavForm
