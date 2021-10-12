@@ -1,4 +1,4 @@
-# NBSS
+# NBSS with fPIT
 Multi-channel Narrow-Band Deep Speech Separation with Full-band Permutation Invariant Training
 
 ## Requirements
@@ -27,3 +27,6 @@ Different seeds for dataset will generate different wavs.
 ```
 python cli_ifp.py --config logs/NBSS_ifp/version_66/config-test.yaml test --model logs/NBSS_ifp/version_66/hparams.yaml --ckpt_path logs/NBSS_ifp/version_66/checkpoints/epoch707_neg_si_sdr-13.7777.ckpt --trainer.gpus=0, --data.seeds="{'train':null,'val':2,'test':5}" --model.exp_name="test"
 ```
+
+## Examples
+Examples can be found in `examples`.
