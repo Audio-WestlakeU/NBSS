@@ -1,5 +1,6 @@
-# NBSS with fPIT
-Multi-channel Narrow-Band Deep Speech Separation with Full-band Permutation Invariant Training
+# Narrow-band Speech Separation with Full-band Permutation Invariant Training
+
+Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/)
 
 ## Requirements
 ```
@@ -28,5 +29,13 @@ Different seeds for dataset will generate different wavs.
 python cli_ifp.py --config logs/NBSS_ifp/version_66/config-test.yaml test --model logs/NBSS_ifp/version_66/hparams.yaml --ckpt_path logs/NBSS_ifp/version_66/checkpoints/epoch707_neg_si_sdr-13.7777.ckpt --trainer.gpus=0, --data.seeds="{'train':null,'val':2,'test':5}" --model.exp_name="test"
 ```
 
-## Examples
-Examples can be found in `examples`.
+## Citation
+If you like this work and want to cite us, please use:
+```
+@article{quan_multi-channel_2021,
+	title = {Multi-channel {Narrow}-{Band} {Deep} {Speech} {Separation} with {Full}-band {Permutation} {Invariant} {Training}},
+	journal = {arXiv preprint arXiv:2110.05966},
+	author = {Quan, Changsheng and Li, Xiaofei},
+	year = {2021},
+}
+```
