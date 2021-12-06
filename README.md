@@ -1,4 +1,4 @@
-# Multi-channel Narrow-Band Deep Speech Separation with Full-band Permutation Invariant Training
+# Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training
 
 Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/)
 
