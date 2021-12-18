@@ -1,6 +1,21 @@
 # Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training
 
-Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/)
+A narrow-band speech separation method. Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
+
+## Results
+
+Speech Separation Performance Comparision with SOTA Speech Separation Methods for 8-Channel 2-Speaker Mixtures
+
+Model | SDR | SI-SDR | NB-PESQ | WB-PESQ
+------|------|------|------|------
+Mixture | 0.18 | 0.00 | 2.05 | 1.6
+Oracle MVDR [1] | 8.15 | 4.58 | 3.20 | 2.62
+FaSNet-TAC [2] | 12.81 | 12.26 | 2.92 | 2.49
+prop. | **13.89** | **13.26** | **3.31** | **2.87**
+
+[1] https://github.com/Enny1991/beamformers
+
+[2] Yi Luo, Zhuo Chen, Nima Mesgarani, and Takuya Yoshioka. End-to-end Microphone Permutation and Number Invariant Multi-channel Speech Separation. In ICASSP 2020.
 
 ## Requirements
 ```
