@@ -5,8 +5,12 @@ Multi-channel Narrow-Band Deep Speech Separation with Full-band Permutation Inva
 ```
 # TorchMetrics
 pip install git+https://github.com/quancs/metrics.git@personal
+
 # PytorchLightning (version 1.5)
 pip install https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
+
+# jsonargparse
+pip install jsonargparse[signatures]
 ```
 
 ## Generate rirs
@@ -18,7 +22,7 @@ python generate_rirs.py
 ## Train
 Train NBSS on the 0-th GPU with config file `configs/ifp/fit-WavForm.yaml` (replace the rir & clean speech dir before training).
 ```
-python cli_ifp.py --config configs/ifp/fit-WavForm.yaml fit --trainer.gpu 0, --seed_everything 2 --model.exp_name "train"
+python cli_ifp.py --config configs/ifp/fit-WavForm.yaml fit --trainer.gpus 0, --seed_everything 2 --model.exp_name "train"
 ```
 
 ## Test
