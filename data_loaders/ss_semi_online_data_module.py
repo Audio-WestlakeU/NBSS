@@ -11,7 +11,7 @@ import random
 
 
 class SS_SemiOnlineDataModule(LightningDataModule):
-    """半在线方式的DataModule实现，DataModule里面提供了如何准备数据、构造Dataset、构造DataLoader的方法
+    """A semi-online DataModule about how to prepare data, construct dataset, and dataloader
     """
 
     @staticmethod
@@ -115,16 +115,16 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         self.prepare_data()
 
     def prepare_data(self):
-        """根据clean_speech_dataset、clean_speech_dir、rir_dir，构造SS_SemiOnlineDataset需要的参数
+        """prepare data
 
-        configs文件夹:
-            文件夹内应当有名字为clean_speech_dataset值的文件夹，里面存放着对应的config文件，里面的内容是自定义的或别人给定的，如果是别人给定的，那么应该是别人的原始文件
+        configs:
+            folder for configs
         
-        clean_speech_dir文件夹：
-            应该保持干净语音的原始文件夹布局
+        clean_speech_dir:
+            clean speech dir
 
-        rir_dir文件夹：
-            文件夹内应该有三个子文件夹：train、validation、test三个文件夹，里面存的全是rir文件
+        rir_dir:
+            RIR dir contains three folders: train, validation, test
         """
 
         # self.rirs: Dict[str, List[str]]
@@ -140,7 +140,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         # wsj0-mix
         if self.clean_speech_dataset == 'wsj0-mix':
             spk1_cfgs, spk2_cfgs = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(f'configs/{self.clean_speech_dataset}')
-        # 相对路径转绝对路径
+        # relative path to absolute path
         for ds in ['train', 'validation', 'test']:
             ds_cfg = spk1_cfgs[ds]
             for cfg in ds_cfg:
@@ -224,8 +224,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         return spk1_cfgs, spk2_cfgs
 
     def setup(self, stage=None):
-        if stage is not None and stage == 'test':  # 用于训练和测试的dataset的行为是有区别的：训练时的语音，为了构造成一个batch，需要将语音截短、补0成固定长度
-            # 此处按照测试的行为来生成对应的数据集：即确定性的数据集，长度为
+        if stage is not None and stage == 'test':
             self.train = SS_SemiOnlineDataset(
                 speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
                 rirs=self.rirs['train'],
