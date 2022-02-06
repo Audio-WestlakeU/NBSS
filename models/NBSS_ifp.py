@@ -11,8 +11,8 @@ from pandas import DataFrame
 import pandas as pd
 import matplotlib.pyplot as plt
 from data_loaders import SS_SemiOnlineDataset
-from torchmetrics.functional.audio import pit, pit_permutate, si_sdr
-from torchmetrics.audio.utils import cal_metrics_functional  #, COMMON_AUDIO_METRICS
+from torchmetrics.functional.audio import permutation_invariant_training as pit, pit_permutate, scale_invariant_signal_distortion_ratio as si_sdr
+from models.metrics import cal_metrics_functional  #, COMMON_AUDIO_METRICS
 import json
 from torch.utils.tensorboard import SummaryWriter
 
