@@ -9,7 +9,7 @@ Speech Separation Performance Comparision with SOTA Speech Separation Methods fo
 Model | SDR | SI-SDR | NB-PESQ | WB-PESQ
 ------|------|------|------|------
 Mixture | 0.18 | 0.00 | 2.05 | 1.6
-Oracle MVDR [1] | 8.15 | 4.58 | 3.20 | 2.62
+Oracle MVDR [1] | 12.19 | 11.70 | 3.21 | 2.68
 FaSNet-TAC [2] | 12.81 | 12.26 | 2.92 | 2.49
 prop. | **13.89** | **13.26** | **3.31** | **2.87**
 
@@ -20,13 +20,13 @@ prop. | **13.89** | **13.26** | **3.31** | **2.87**
 ## Requirements
 ```
 # TorchMetrics
-pip install git+https://github.com/quancs/metrics.git@personal
+pip install torchmetrics[audio]>=0.7.0
 
 # PytorchLightning (version 1.5)
-pip install https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
+pip install pytorch-lightning>=1.5.1
 
 # jsonargparse
-pip install jsonargparse[signatures]
+pip install jsonargparse[signatures]>=4.1.4
 ```
 
 ## Generate rirs
