@@ -11,30 +11,191 @@ import pandas as pd
 import pytorch_lightning as pl
 import soundfile as sf
 import torch
-from beamformers import beamformers
 from data_loaders import SS_SemiOnlineDataModule, SS_SemiOnlineDataset
 from pandas.core.frame import DataFrame
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cli import (LightningArgumentParser, LightningCLI)
 from torch import Tensor
-from torchmetrics.audio.utils import cal_metrics_functional
-from torchmetrics.functional.audio import pit, pit_permutate, si_sdr
+from models.metrics import cal_metrics_functional
+from torchmetrics.functional.audio import permutation_invariant_training as pit, pit_permutate, scale_invariant_signal_distortion_ratio as si_sdr
 
 COMMON_AUDIO_METRICS = ['SDR', 'SI_SDR', 'SI_SNR', 'NB_PESQ', 'WB_PESQ']
+
+#### code borrowed from https://github.com/Enny1991/beamformers ####
+import numpy as np
+from scipy.linalg import solve, eigh, LinAlgError
+from scipy.signal import stft as _stft, istft as _istft
+import os
+import soundfile as sf
+
+eps = 1e-15
+
+
+def stft(x, frame_len=2048, frame_step=512):
+    return _stft(x, nperseg=frame_len, noverlap=(frame_len - frame_step))[-1]
+
+
+def istft(x, frame_len=2048, frame_step=512, input_len=None):
+    _reconstructed = _istft(x, noverlap=(frame_len - frame_step))[1].astype('float32' if x.dtype == 'complex64' else 'float64')
+    if input_len is None:
+        return _reconstructed
+    else:
+        rec_len = len(_reconstructed)
+        if input_len <= rec_len:
+            return _reconstructed[:input_len]
+        else:
+            return np.append(_reconstructed, np.zeros((input_len - rec_len, ), dtype=x.dtype))
+
+
+def MVDR(mixture, noise, target=None, frame_len=2048, frame_step=512, ref_mic=0):
+    """
+    ftp://ftp.esat.kuleuven.ac.be/stadius/spriet/reports/08-211.pdf
+    Frequency domain Minimum Variance Distortionless Response (MVDR) beamformer
+    :param mixture: nd_array (n_mics, time) of the mixture recordings
+    :param noise: nd_array (n_mics, time) of the noise recordings
+    :param target: nd_array (n_mics, time) of the target recordings
+    :param frame_len: int (self explanatory)
+    :param frame_step: int (self explanatory)
+    :return: the enhanced signal
+    """
+    # calculate stft
+    mixture_stft = stft(mixture, frame_len=frame_len, frame_step=frame_step)
+
+    # estimate steering vector for desired speaker (depending if target is available)
+    if target is not None:
+        target_stft = stft(target, frame_len=frame_len, frame_step=frame_step)
+        h = estimate_steering_vector(target_stft=target_stft)
+    else:
+        noise_spec = stft(noise, frame_len=frame_len, frame_step=frame_step)
+        h = estimate_steering_vector(mixture_stft=mixture_stft, noise_stft=noise_spec)
+
+    # calculate weights
+    w = mvdr_weights(mixture_stft, h)
+
+    # apply weights
+    sep_spec = apply_beamforming_weights(mixture_stft, w)
+
+    # reconstruct wav
+    recon = istft(sep_spec, frame_len=frame_len, frame_step=frame_step, input_len=None)
+
+    return recon
+
+
+def estimate_steering_vector(target_stft=None, mixture_stft=None, noise_stft=None):
+    """
+    Estimation of steering vector based on microphone recordings. The eigenvector technique used is described in
+    Sarradj, E. (2010). A fast signal subspace approach for the determination of absolute levels from phased microphone
+    array measurements. Journal of Sound and Vibration, 329(9), 1553-1569.
+    The steering vector is represented by the leading eigenvector of the covariance matrix calculated for each
+    frequency separately.
+    :param target_stft: nd_array (channels, time, freq_bins)
+    :param mixture_stft: nd_array (channels, time, freq_bins)
+    :param noise_stft: nd_array (channels, time, freq_bins)
+    :return: h: nd_array (freq_bins, ): steering vector
+    """
+
+    if target_stft is None:
+        if mixture_stft is None or noise_stft is None:
+            raise ValueError("If no target recordings are provided you need to provide both mixture recordings "
+                             "and noise recordings")
+        C, F, T = mixture_stft.shape  # (channels, freq_bins, time)
+    else:
+        C, F, T = target_stft.shape  # (channels, freq_bins, time)
+
+    eigen_vec, eigen_val, h = [], [], []
+
+    for f in range(F):  # Each frequency separately
+
+        # covariance matrix
+        if target_stft is None:
+            # covariance matrix estimated by subtracting mixture and noise covariances
+            _R0 = mixture_stft[:, f].dot(np.conj(mixture_stft[:, f].T))
+            _R1 = noise_stft[:, f].dot(np.conj(noise_stft[:, f].T))
+            _Rxx = _R0 - _R1
+        else:
+            # covariance matrix estimated directly from single speaker
+            _Rxx = target_stft[:, f].dot(np.conj(target_stft[:, f].T))
+
+        # eigendecomposition
+        [_d, _v] = np.linalg.eig(_Rxx)
+
+        # index of leading eigenvector
+        idx = np.argsort(_d)[::-1][0]
+
+        # collect leading eigenvector and eigenvalue
+        eigen_val.append(_d[idx])
+        eigen_vec.append(_v[:, idx])
+
+    # rescale eigenvectors by eigenvalues for each frequency
+    for vec, val in zip(eigen_vec, eigen_val):
+        if val != 0.0:
+            # the part changed from the MVDR implementation https://github.com/Enny1991/beamformers
+            # vec = vec * val / np.abs(val)
+            vec = vec / vec[0]  # normalized to the first channel
+            h.append(vec)
+        else:
+            h.append(np.ones_like(vec))
+
+    # return steering vector
+    return np.vstack(h)
+
+
+def apply_beamforming_weights(signals, weights):
+    """
+    Fastest way to apply beamforming weights in frequency domain.
+    :param signals: nd_array (freq_bins (a), n_mics (b))
+    :param weights: nd_array (n_mics (b), freq_bins (a), time_frames (c))
+    :return: nd_array (freq_bins (a), time_frames (c)): filtered stft
+    """
+    return np.einsum('ab,bac->ac', np.conj(weights), signals)
+
+
+def mvdr_weights(mixture_stft, h):
+    C, F, T = mixture_stft.shape  # (channels, freq_bins, time)
+
+    # covariance matrix
+
+    R_y = np.einsum('a...c,b...c', mixture_stft, np.conj(mixture_stft)) / T
+    R_y = condition_covariance(R_y, 1e-6)
+    R_y /= np.trace(R_y, axis1=-2, axis2=-1)[..., None, None] + 1e-15
+    # preallocate weights
+    W = np.zeros((F, C), dtype='complex64')
+
+    # compute weights for each frequency separately
+    for i, r, _h in zip(range(F), R_y, h):
+        # part = np.linalg.inv(r + np.eye(C, dtype='complex') * eps).dot(_h)
+        part = solve(r, _h)
+        _w = part / np.conj(_h).T.dot(part)
+
+        W[i, :] = _w
+
+    return W
+
+
+def condition_covariance(x, gamma):
+    """Code borrowed from https://github.com/fgnt/nn-gev/blob/master/fgnt/beamforming.py
+    Please refer to the repo and to the paper (https://ieeexplore.ieee.org/document/7471664) for more information.
+    see https://stt.msu.edu/users/mauryaas/Ashwini_JPEN.pdf (2.3)"""
+    scale = gamma * np.trace(x, axis1=-2, axis2=-1)[..., None, None] / x.shape[-1]
+    n = len(x.shape) - 2
+    scaled_eye = np.eye(x.shape[-1], dtype=x.dtype)[(None, ) * n] * scale
+    return (x + scaled_eye) / (1 + gamma)
+
+
+#### https://github.com/Enny1991/beamformers end ####
 
 
 # oracle beamformer
 class OracleBeamformer(pl.LightningModule):
 
-    def __init__(self, speaker_num: int = 2, ref_channel: int = 0, beamformer: str = 'MVDR', give_target: bool = False, exp_name: str = 'exp'):
+    def __init__(self, speaker_num: int = 2, ref_channel: int = 0, give_target: bool = True, exp_name: str = 'exp'):
         super().__init__()
 
         # save all the hyperparameters to the checkpoint
         self.save_hyperparameters()
         # self.ref_chn_idx = self.hparams.channels.index(self.hparams.ref_channel)
 
-        self.bf = getattr(beamformers, beamformer)
-        print(f"using {beamformer} beamformer")
+        print(f"using MVDR beamformer")
 
         self.give_target = give_target
         self.ref_channel = ref_channel
@@ -54,9 +215,9 @@ class OracleBeamformer(pl.LightningModule):
             target = ys[spk, ...]
             noise = x - target
             if self.give_target:
-                pred = beamformers.MVDR(mixture=x.numpy(), noise=noise.numpy(), target=target.numpy(), ref_mic=self.ref_channel)
+                pred = MVDR(mixture=x.numpy(), noise=noise.numpy(), target=target.numpy(), ref_mic=self.ref_channel)
             else:
-                pred = beamformers.MVDR(mixture=x.numpy(), noise=noise.numpy())
+                pred = MVDR(mixture=x.numpy(), noise=noise.numpy())
             predictions.append(torch.tensor(pred))
 
         preds = torch.stack(predictions)[None, :, :x.shape[1]]
@@ -153,7 +314,7 @@ class OracleBeamformer(pl.LightningModule):
 
         # 写入预测的例子
         if paras[0]['index'] < 200 and self.local_rank == 0:
-            abs_max = max(torch.max(torch.abs(x[0,])), torch.max(torch.abs(ys_hat_perm[0,])), torch.max(torch.abs(ys[0,])))
+            abs_max = max(torch.max(torch.abs(x[0, ])), torch.max(torch.abs(ys_hat_perm[0, ])), torch.max(torch.abs(ys[0, ])))
 
             def write_wav(wav_path: str, wav: torch.Tensor):
                 # make sure wav don't have illegal values (abs greater than 1)
