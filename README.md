@@ -27,6 +27,8 @@ pip install pytorch-lightning>=1.5.1
 
 # jsonargparse
 pip install jsonargparse[signatures]>=4.1.4
+
+# gpuRIR: check https://github.com/DavidDiazGuerra/gpuRIR
 ```
 
 ## Generate rirs
