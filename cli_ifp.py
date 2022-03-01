@@ -98,4 +98,4 @@ class MyLightningCLI(LightningCLI):
         self.trainer.logger = TensorBoardLogger(exp_save_path, name='', default_hp_metric=False)
 
 
-cli = MyLightningCLI(NBSS_ifp, SS_SemiOnlineDataModule, seed_everything_default=None)
+cli = MyLightningCLI(NBSS_ifp, SS_SemiOnlineDataModule, seed_everything_default=None, save_config_overwrite=True)
