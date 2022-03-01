@@ -60,7 +60,7 @@ class MyLightningCLI(LightningCLI):
         return super().add_arguments_to_parser(parser)
 
     def before_fit(self):
-        resume_from_checkpoint: str = self.config['fit']['trainer']["resume_from_checkpoint"]
+        resume_from_checkpoint: str = self.config['fit']['trainer']["resume_from_checkpoint"] or self.config['fit']['ckpt_path']
         if resume_from_checkpoint is not None and resume_from_checkpoint.endswith('last.ckpt'):
             # log in same dir
             # resume_from_checkpoint example: /mnt/home/quancs/projects/NBSS_pmt/logs/NBSS_ifp/version_29/checkpoints/last.ckpt
