@@ -43,6 +43,11 @@ Train NBSS on the 0-th GPU with config file `configs/ifp/fit-WavForm.yaml` (repl
 python cli_ifp.py --config configs/ifp/fit-WavForm.yaml fit --trainer.gpus 0, --seed_everything 2 --model.exp_name "train"
 ```
 
+Resume training from a checkpoint:
+```
+python cli_ifp.py --config configs/ifp/fit-WavForm.yaml fit --trainer.gpus 0, --seed_everything 2 --model.exp_name "train" --ckpt_path "a/path/to/a/checkpoint"
+```
+
 ## Test
 Test on the 0-th GPU.
 Different seeds for dataset will generate different wavs.
