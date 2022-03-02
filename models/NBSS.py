@@ -4,6 +4,14 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from torchmetrics.functional.audio import permutation_invariant_training as pit, scale_invariant_signal_distortion_ratio as si_sdr
+
+
+def neg_si_sdr(preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    batch_size = target.shape[0]
+    si_snr_val = si_sdr(preds=preds, target=target)
+    return -torch.mean(si_snr_val.view(batch_size, -1), dim=1)
+
 
 class NBSS(nn.Module):
     """Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training
@@ -40,7 +48,7 @@ class NBSS(nn.Module):
         Returns:
             y: the predicted time domain signal, shape [Batch, Speaker, Time]
         """
-        
+
         # STFT
         B, C, T = x.shape
         x = x.reshape((B * C, T))
@@ -51,7 +59,7 @@ class NBSS(nn.Module):
         # normalization by using ref_channel
         F, TF = X.shape[1], X.shape[2]
         Xr = X[..., self.ref_channel].clone()  # copy
-        XrMM = torch.abs(Xr).mean(dim=2)  # Xr_magnitude_mean: mean of the magnitude of the ref channel of Xm
+        XrMM = torch.abs(Xr).mean(dim=2)  # Xr_magnitude_mean: mean of the magnitude of the ref channel of X
         X[:, :, :, :] /= (XrMM.reshape(B, F, 1, 1) + 1e-8)
 
         # to real
@@ -81,6 +89,8 @@ class NBSS(nn.Module):
 
 if __name__ == '__main__':
     x = torch.randn(size=(10, 8, 16000))
+    ys = torch.randn(size=(10, 2, 16000))
     m = NBSS()
     ys_hat = m(x)
-    print(ys_hat.shape)
+    neg_sisdr_loss, best_perm = pit(preds=ys_hat, target=ys, metric_func=neg_si_sdr, eval_func='min')
+    print(ys_hat.shape, neg_sisdr_loss.mean())
