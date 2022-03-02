@@ -55,11 +55,15 @@ Different seeds for dataset will generate different wavs.
 python cli_ifp.py --config logs/NBSS_ifp/version_66/config-test.yaml test --model logs/NBSS_ifp/version_66/hparams.yaml --ckpt_path logs/NBSS_ifp/version_66/checkpoints/epoch707_neg_si_sdr-13.7777.ckpt --trainer.gpus=0, --data.seeds="{'train':null,'val':2,'test':5}" --model.exp_name="test"
 ```
 
+## Module Version
+see models/NBSS.py
+
+
 ## Citation
 If you like this work and want to cite us, please use:
 ```
 @article{quan_multi-channel_2021,
-	title = {Multi-channel {Narrow}-{Band} {Deep} {Speech} {Separation} with {Full}-band {Permutation} {Invariant} {Training}},
+	title = {Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training},
 	journal = {arXiv preprint arXiv:2110.05966},
 	author = {Quan, Changsheng and Li, Xiaofei},
 	year = {2021},
