@@ -470,19 +470,19 @@ class NBSS_ifp(pl.LightningModule):
         wavname = os.path.basename(f"{paras[0]['index']}.wav")
         result_dict = {'id': batch_idx, 'wavname': wavname, 'fploss': fploss.item()}
 
-        def corr_perm(estimates):
-            estimates_f = estimates.permute(0, 2, 1, 3, 4).contiguous()  # [batch_size, freq_num, spk_num, time, band_num] from [batch_size, spk_num, freq_num, time, band_num]
-            # solve F permutation problem using correlation method
-            Ys_bands_hat_per, fbps_corr, avg_loss = perm_by_correlation(estimates_f)
-            ys_hat_corr = decode(Ys_bands_hat_per, self.hparams.ft_len, self.hparams.ft_overlap, ys.shape[-1])
-            return ys_hat_corr
+#         def corr_perm(estimates):
+#             estimates_f = estimates.permute(0, 2, 1, 3, 4).contiguous()  # [batch_size, freq_num, spk_num, time, band_num] from [batch_size, spk_num, freq_num, time, band_num]
+#             # solve F permutation problem using correlation method
+#             Ys_bands_hat_per, fbps_corr, avg_loss = perm_by_correlation(estimates_f)
+#             ys_hat_corr = decode(Ys_bands_hat_per, self.hparams.ft_len, self.hparams.ft_overlap, ys.shape[-1])
+#             return ys_hat_corr
 
         # compute the frequency
         if self.hparams.target_type != "WavForm":
             ys_hat = self.decode(Ys_bands_hat, ys.shape[-1])  # to time domain signals
-            ys_hat_corr = corr_perm(estimates=estimates)
-        else:
-            ys_hat_corr = corr_perm(estimates=Ys_bands_hat)
+#             ys_hat_corr = corr_perm(estimates=estimates)
+#         else:
+#             ys_hat_corr = corr_perm(estimates=Ys_bands_hat)
 
         try:
             # calculate metrics
@@ -496,15 +496,15 @@ class NBSS_ifp(pl.LightningModule):
             result_dict.update(metrics)
             result_dict.update(input_metrics)
 
-            # calculate metrics for corr
-            _, ps = pit(preds=ys_hat_corr, target=ys, metric_func=si_sdr, eval_func='max')
-            ys_hat_corr_perm = pit_permutate(ys_hat_corr, ps)
-            metrics, input_metrics, imp_metrics = cal_metrics_functional(COMMON_AUDIO_METRICS, ys_hat_corr_perm[0], ys[0], input_metrics, 16000)
-            for key, val in imp_metrics.items():
-                self.log('test/' + key + '_corr', val)
-                result_dict[key + '_corr'] = val
-            for key, val in metrics.items():
-                result_dict[key + '_corr'] = val
+#             # calculate metrics for corr
+#             _, ps = pit(preds=ys_hat_corr, target=ys, metric_func=si_sdr, eval_func='max')
+#             ys_hat_corr_perm = pit_permutate(ys_hat_corr, ps)
+#             metrics, input_metrics, imp_metrics = cal_metrics_functional(COMMON_AUDIO_METRICS, ys_hat_corr_perm[0], ys[0], input_metrics, 16000)
+#             for key, val in imp_metrics.items():
+#                 self.log('test/' + key + '_corr', val)
+#                 result_dict[key + '_corr'] = val
+#             for key, val in metrics.items():
+#                 result_dict[key + '_corr'] = val
         except:
             self.expt_num = self.expt_num + 1
 
