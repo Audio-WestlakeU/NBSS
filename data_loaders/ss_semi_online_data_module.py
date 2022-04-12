@@ -11,39 +11,11 @@ import random
 
 
 class SS_SemiOnlineDataModule(LightningDataModule):
-    """A semi-online DataModule about how to prepare data, construct dataset, and dataloader
+    """半在线方式的DataModule实现，DataModule里面提供了如何准备数据、构造Dataset、构造DataLoader的方法
     """
-
-    @staticmethod
-    def add_argparse_args(parent_parser):
-
-        def float_or_str(value):
-            try:
-                return float(value)
-            except:
-                return value
-
-        parser = parent_parser.add_argument_group("SS_SemiOnlineDataModule")
-        parser.add_argument('--clean_speech_dataset', type=str, required=True, choices=['wsj0-mix'])
-        parser.add_argument('--clean_speech_dir', type=str, required=True)
-        parser.add_argument('--rir_dir', type=str, required=True)
-        parser.add_argument('--speech_overlap_ratio', type=float, nargs='+', required=True)
-        parser.add_argument('--speech_scale', type=float, nargs='+', required=True)
-        parser.add_argument(
-            '--audio_time_len',
-            type=float_or_str,
-            nargs='+',
-            required=True,
-            help="can be float, max, min or None. given one parameter means for train only, others are None; given two means for train and val; given three means for train val and test")
-        parser.add_argument('--num_workers', type=int, default=5)
-        parser.add_argument('--batch_size', type=int, default=8, nargs='+', help='batch_size for train and validation')
-
-        return parent_parser
-
     rirs: Dict[str, List[str]]
     spk1_cfgs: Dict[str, List[Dict[str, str]]]
-    overlap_det: Optional[Dict[str, List[float]]]
-    scale_det: Dict[str, List[float]]
+    spk2_cfgs: Dict[str, List[Dict[str, str]]]
 
     def __init__(
         self,
@@ -55,10 +27,10 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         batch_size: List[int] = [5, 5],
         speaker_num: int = 2,
         audio_time_len: List[Union[float, str]] = ["headtail 4", "headtail 4", "headtail 4"],
-        num_workers: int = 5,
-        collate_func_train: Callable = None,
-        collate_func_val: Callable = None,
-        collate_func_test: Callable = None,
+        num_workers: int = 15,
+        collate_func_train: Callable = SS_SemiOnlineDataset.collate_fn,
+        collate_func_val: Callable = SS_SemiOnlineDataset.collate_fn,
+        collate_func_test: Callable = SS_SemiOnlineDataset.collate_fn,
         test_set: str = 'test',
         shuffle_train_rir: bool = True,
         seeds: Dict[str, Optional[int]] = {
@@ -66,6 +38,10 @@ class SS_SemiOnlineDataModule(LightningDataModule):
             'val': 2,  # fix val and test seeds to make sure they won't change in any time
             'test': 3
         },
+        # if pin_memory=True, will occupy a lot of memory & speed up
+        pin_memory: bool = True,
+        # prefetch how many samples, will increase the memory occupied when pin_memory=True
+        prefetch_factor=5,
     ):
 
         super().__init__()
@@ -112,19 +88,21 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         self.collate_func_val = collate_func_val
         self.collate_func_test = collate_func_test
 
+        self.pin_memory = pin_memory
+        self.prefetch_factor = prefetch_factor
         self.prepare_data()
 
     def prepare_data(self):
-        """prepare data
+        """根据clean_speech_dataset、clean_speech_dir、rir_dir，构造SS_SemiOnlineDataset需要的参数
 
-        configs:
-            folder for configs
+        configs文件夹:
+            文件夹内应当有名字为clean_speech_dataset值的文件夹，里面存放着对应的config文件，里面的内容是自定义的或别人给定的，如果是别人给定的，那么应该是别人的原始文件
         
-        clean_speech_dir:
-            clean speech dir
+        clean_speech_dir文件夹：
+            应该保持干净语音的原始文件夹布局
 
-        rir_dir:
-            RIR dir contains three folders: train, validation, test
+        rir_dir文件夹：
+            文件夹内应该有三个子文件夹：train、validation、test三个文件夹，里面存的全是rir文件
         """
 
         # self.rirs: Dict[str, List[str]]
@@ -140,7 +118,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         # wsj0-mix
         if self.clean_speech_dataset == 'wsj0-mix':
             spk1_cfgs, spk2_cfgs = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(f'configs/{self.clean_speech_dataset}')
-        # relative path to absolute path
+        # 相对路径转绝对路径
         for ds in ['train', 'validation', 'test']:
             ds_cfg = spk1_cfgs[ds]
             for cfg in ds_cfg:
@@ -157,12 +135,10 @@ class SS_SemiOnlineDataModule(LightningDataModule):
 
         Args:
             config_dir: the dir contains wsj0-mix dataset configuration files
-            speech_overlap_ratio: generate deterministic parameters for train, validation, test
-            speech_scale: generate deterministic parameters for train, validation, test
 
         Example:
             >>> from data_loaders.ss_semi_online_data_module import SS_SemiOnlineDataModule
-            >>> spk1_cfg, spk2_cfg, sord, ssd = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(config_dir='configs/wsj0-mix', speech_overlap_ratio=(0, 1), speech_scale=(-5, 5))
+            >>> spk1_cfg, spk2_cfg = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(config_dir='configs/wsj0-mix')
             >>> spk1_cfg['train']
             >>> spk1_cfg['validation']
             >>> spk1_cfg['test']
@@ -224,7 +200,8 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         return spk1_cfgs, spk2_cfgs
 
     def setup(self, stage=None):
-        if stage is not None and stage == 'test':
+        if stage is not None and stage == 'test':  # 用于训练和测试的dataset的行为是有区别的：训练时的语音，为了构造成一个batch，需要将语音截短、补0成固定长度
+            # 此处按照测试的行为来生成对应的数据集：即确定性的数据集，长度为
             self.train = SS_SemiOnlineDataset(
                 speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
                 rirs=self.rirs['train'],
@@ -270,27 +247,25 @@ class SS_SemiOnlineDataModule(LightningDataModule):
             )
 
     def train_dataloader(self) -> DataLoader:
-        prefetch_factor = self.batch_size
         persistent_workers = False
         return DataLoader(self.train,
                           batch_size=self.batch_size,
                           collate_fn=self.collate_func_train,
                           sampler=SS_SemiOnlineSampler(self.train, seed=self.seeds['train'], shuffle=True, shuffle_rir=self.shuffle_train_rir),
                           num_workers=self.num_workers,
-                          prefetch_factor=prefetch_factor,
-                          pin_memory=True,
+                          prefetch_factor=self.prefetch_factor,
+                          pin_memory=self.pin_memory,
                           persistent_workers=persistent_workers)
 
     def val_dataloader(self) -> DataLoader:
-        prefetch_factor = self.batch_size_val
         persistent_workers = False
         return DataLoader(self.val,
                           batch_size=self.batch_size_val,
                           collate_fn=self.collate_func_val,
                           sampler=SS_SemiOnlineSampler(self.val, seed=self.seeds['val'], shuffle=False, shuffle_rir=False),
                           num_workers=self.num_workers,
-                          prefetch_factor=prefetch_factor,
-                          pin_memory=True,
+                          prefetch_factor=self.prefetch_factor,
+                          pin_memory=self.pin_memory,
                           persistent_workers=persistent_workers)
 
     def test_dataloader(self) -> DataLoader:
@@ -308,6 +283,25 @@ class SS_SemiOnlineDataModule(LightningDataModule):
             batch_size=1,
             collate_fn=self.collate_func_test,
             sampler=SS_SemiOnlineSampler(dataset, seed=self.seeds['test'], shuffle=False, shuffle_rir=True),
-            num_workers=1,
+            num_workers=3,
+            prefetch_factor=prefetch_factor,
+        )
+
+    def predict_dataloader(self) -> DataLoader:
+        prefetch_factor = 2
+
+        if self.test_set == 'test':
+            dataset = self.test
+        elif self.test_set == 'val':
+            dataset = self.val
+        else:  # train
+            dataset = self.train
+
+        return DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=SS_SemiOnlineDataset.collate_fn,
+            sampler=SS_SemiOnlineSampler(dataset, seed=self.seeds['test'], shuffle=False, shuffle_rir=True),
+            num_workers=3,
             prefetch_factor=prefetch_factor,
         )

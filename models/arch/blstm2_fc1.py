@@ -3,7 +3,7 @@ from torch import Tensor
 from typing import Optional, Tuple
 
 
-class NB_BLSTM(nn.Module):
+class BLSTM2_FC1(nn.Module):
 
     def __init__(
             self,

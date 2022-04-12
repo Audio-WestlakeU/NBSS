@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, Mode
 from pytorch_lightning.utilities.cli import LightningArgumentParser, LightningCLI
 
 from data_loaders import SS_SemiOnlineDataModule
-from models.arch.NB_BLSTM import NB_BLSTM
+from models.arch.blstm2_fc1 import BLSTM2_FC1
 from models.io.narrow_band.td_signal_nb import TimeDomainSignalNB
 from models.NBSS import NBSS
 from models.utils import MyRichProgressBar as RichProgressBar
@@ -28,7 +28,7 @@ class NBSSCLI(LightningCLI):
             "data.clean_speech_dir": "/dev/shm/quancs/",
             "data.rir_dir": "/dev/shm/quancs/rir_cfg_4",
             # "trainer.benchmark": True,
-            "model.arch": lazy_instance(NB_BLSTM, hidden_size=[256, 128], activation="", input_size=16, output_size=4),
+            "model.arch": lazy_instance(BLSTM2_FC1, hidden_size=[256, 128], activation="", input_size=16, output_size=4),
             "model.io": lazy_instance(TimeDomainSignalNB, ft_len=512, ft_overlap=256),
         })
 

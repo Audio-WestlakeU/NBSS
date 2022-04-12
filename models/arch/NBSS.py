@@ -6,7 +6,7 @@ from torch import Tensor
 from torchmetrics.functional.audio import permutation_invariant_training as pit
 from torchmetrics.functional.audio import scale_invariant_signal_distortion_ratio as si_sdr
 
-from models.arch.NB_BLSTM import NB_BLSTM
+from models.arch.blstm2_fc1 import BLSTM2_FC1
 from models.arch.NBC import NBC
 
 
@@ -37,7 +37,7 @@ class NBSS(nn.Module):
         super().__init__()
 
         if arch == "NB_BLSTM":
-            self.arch: nn.Module = NB_BLSTM(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+            self.arch: nn.Module = BLSTM2_FC1(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
         elif arch == "NBC":
             self.arch = NBC(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
         else:

@@ -22,7 +22,7 @@ def randfloat(g: torch.Generator, low: float, high: float) -> float:
 
 
 class SS_SemiOnlineDataset(Dataset):
-    """A semi-online dataset for speech separation: dynamicly convolve RIRs and speech pairs
+    """语音分离半在线数据集：训练的语音是动态合成的，RIR是离线生成的
     """
 
     @staticmethod
@@ -43,15 +43,15 @@ class SS_SemiOnlineDataset(Dataset):
                  speech_scale: Tuple[float, float],
                  audio_time_len: Optional[Union[float, str]] = None,
                  sample_rate: Optional[int] = None) -> None:
-        """initialze 
+        """初始化
 
         Args:
-            speeches: paths of single channel clean speech pairs
-            rirs: paths of RIRs (.npz format). Each file contains a dict, where the keys `speech_rir`, `noise_rir` are for speeches and noises
-            speech_scale: a range to rescale the relative energy of speeches, dB.
-            audio_time_len: audio signal length (in seconds). Shorter signals will be appended zeros, longer signals will be cut to the length
-            speech_overlap_ratio: the speech overlap ratio of speeches
-            sample_rate: sample rate. if specified, signals will be downsampled or upsampled.
+            speeches: 单通道原始语音信号的路径。对于分离任务，类型为List[List[Dict[str,str]]]；增强和去混响为List[Dict[str,str]]?
+            rirs: rir的路径，指向NPZ格式的文件。每个NPZ内部是一个Dict，其中名字为speech_rir的部分是speech的rir，名字为noise_rir的部分是noise的rir
+            speech_scale: 范围，用于重新调整语音的能量，单位为dB。分离任务为语音间相互的能量。增强和降噪？？？
+            audio_time_len: 返回语音的长度，单位秒。指定该参数则会对信号做补0和截取的操作
+            speech_overlap_ratio: 分离任务的参数，指定后会调整信号的语音信号的重叠比例
+            sample_rate: 采样率。如果指定，则会对语音和rir进行降采样或者重采样
         """
         self.speaker_num = len(speeches)
         assert self.speaker_num == 2, f"Only support two speaker cases, now it's {self.speaker_num} speakers"
@@ -143,6 +143,30 @@ class SS_SemiOnlineDataset(Dataset):
             if ovlp_type == "headtail":  # 5
                 needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
             else:  # mid or front or end
+                # pad and cut, overlap_ratio=sampled
+                needed_lens = [clean.shape[0] for clean in cleans]
+                max_idx = needed_lens.index(max(needed_lens))
+                min_idx = needed_lens.index(min(needed_lens))
+                if max_idx == min_idx:
+                    max_idx = [1, 0][max_idx]
+                needed_lens[max_idx] = mix_frame_len
+                needed_lens[min_idx] = int(mix_frame_len * speech_overlap_ratio_for_this)  # type:ignore
+        elif str.startswith(str(self.audio_time_len), "all-mix"):  # eg: all-mix 5
+            # sample a type
+            types = ['full', 'mid', 'headtail', ['front', 'end']]  # type:ignore
+            which_type = randint(g, low=0, high=len(types))
+            if isinstance(types[which_type], list):
+                types = types[which_type]  # type:ignore
+                which_type = randint(g, low=0, high=len(types))
+            ovlp_type = types[which_type]
+            # cal needed_lens
+            speech_overlap_ratio_for_this = randfloat(g, low=self.speech_overlap_ratio[0], high=self.speech_overlap_ratio[1])
+            if ovlp_type == 'full':
+                speech_overlap_ratio_for_this = 1.0
+            mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
+            if ovlp_type == "headtail":  # 5
+                needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
+            else:  # full, mid or front or end
                 # pad and cut, overlap_ratio=sampled
                 needed_lens = [clean.shape[0] for clean in cleans]
                 max_idx = needed_lens.index(max(needed_lens))
