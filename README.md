@@ -1,6 +1,10 @@
-# Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training
+# Multi-channel Narrow-band Deep Speech Separation
 
-A narrow-band speech separation method. Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
+A narrow-band speech separation method.
+The official repo of "Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training" and "Multichannel Speech Separation with Narrow-band Conformer".
+Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
+More information about our group could be found at [https://audio.westlake.edu.cn](https://audio.westlake.edu.cn/Publications.htm).
+
 
 ## Results
 
@@ -22,9 +26,9 @@ NBC [5]			| 2.0 M		| **4.00**	| **3.78**	| **20.3**	| 1.32
 
 [3] C. Subakan, M. Ravanelli, S. Cornell, M. Bronzi, and J. Zhong. Attention Is All You Need In Speech Separation. In ICASSP 2021.
 
-[4] Changsheng Quan, Xiaofei Li. Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training. In ICASSP 2022.
+[4] Changsheng Quan, Xiaofei Li. **Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training**. In ICASSP 2022.
 
-[5] Changsheng Quan, Xiaofei Li. Multichannel Speech Separation with Narrow-band Conformer. arXiv preprint arXiv:2204.04464.
+[5] Changsheng Quan, Xiaofei Li. **Multichannel Speech Separation with Narrow-band Conformer**. arXiv preprint arXiv:2204.04464.
 
 
 ## Requirements
@@ -41,11 +45,11 @@ python generate_rirs.py
 ```
 
 ## Train & Test
-**Train** NBC on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` is trained and test in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
+**Train** Narrow-band Conformer (NBC) on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` is trained and test in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
 ```
 python NBSSCLI.py fit --config=configs/NBC-fit.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0,
 ```
-More gpus can be used by appending the gpu indexes to `trainer.gpus`, e.g. `--trainer.gpus=0,1,2,3,`
+More gpus can be used by appending the gpu indexes to `trainer.gpus`, e.g. `--trainer.gpus=0,1,2,3,`.
 
 
 **Resume** training from a checkpoint:
