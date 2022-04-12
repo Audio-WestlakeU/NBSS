@@ -19,14 +19,7 @@ prop. | **13.89** | **13.26** | **3.31** | **2.87**
 
 ## Requirements
 ```
-# TorchMetrics
-pip install torchmetrics[audio]>=0.7.0
-
-# PytorchLightning (version 1.5)
-pip install pytorch-lightning>=1.5.1
-
-# jsonargparse
-pip install jsonargparse[signatures]>=4.1.4
+pip install -r requirements.txt
 
 # gpuRIR: check https://github.com/DavidDiazGuerra/gpuRIR
 ```
@@ -56,7 +49,7 @@ python cli_ifp.py --config logs/NBSS_ifp/version_66/config-test.yaml test --mode
 ```
 
 ## Module Version
-see models/NBSS.py
+see models/arch/NBSS.py
 
 
 ## Citation

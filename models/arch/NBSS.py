@@ -1,10 +1,13 @@
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torchmetrics.functional.audio import permutation_invariant_training as pit
+from torchmetrics.functional.audio import scale_invariant_signal_distortion_ratio as si_sdr
 
-from torchmetrics.functional.audio import permutation_invariant_training as pit, scale_invariant_signal_distortion_ratio as si_sdr
+from models.arch.NB_BLSTM import NB_BLSTM
+from models.arch.NBC import NBC
 
 
 def neg_si_sdr(preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -14,23 +17,31 @@ def neg_si_sdr(preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 class NBSS(nn.Module):
-    """Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training
+    """Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training.
+
+    A module version of NBSS which takes time domain signal as input, and outputs time domain signal.
+
+    Arch could be NB-BLSTM or NBC
     """
 
     def __init__(
             self,
             n_channel: int = 8,
             n_speaker: int = 2,
-            hidden_dims: Tuple[int, int] = (256, 128),
             n_fft: int = 512,
             n_overlap: int = 256,
             ref_channel: int = 0,
+            arch: str = "NB_BLSTM",  # could be NBC
+            arch_kwargs: Dict[str, Any] = dict(),
     ):
         super().__init__()
 
-        self.blstm1 = nn.LSTM(input_size=n_channel * 2, hidden_size=hidden_dims[0], batch_first=True, bidirectional=True)  # type:ignore
-        self.blstm2 = nn.LSTM(input_size=hidden_dims[0] * 2, hidden_size=hidden_dims[1], batch_first=True, bidirectional=True)  # type:ignore
-        self.linear = nn.Linear(hidden_dims[1] * 2, n_speaker * 2)  # type:ignore
+        if arch == "NB_BLSTM":
+            self.arch: nn.Module = NB_BLSTM(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+        elif arch == "NBC":
+            self.arch = NBC(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+        else:
+            raise Exception(f"Unkown arch={arch}")
 
         self.register_buffer('window', torch.hann_window(n_fft), False)  # self.window, will be moved to self.device at training time
         self.n_fft = n_fft
@@ -67,9 +78,7 @@ class NBSS(nn.Module):
         X = X.reshape(B * F, TF, C * 2)
 
         # network processing
-        X, _ = self.blstm1(X)
-        X, _ = self.blstm2(X)
-        output = self.linear(X)
+        output = self.arch(X)
 
         # to complex
         output = output.reshape(B, F, TF, self.n_speaker, 2)
@@ -90,7 +99,13 @@ class NBSS(nn.Module):
 if __name__ == '__main__':
     x = torch.randn(size=(10, 8, 16000))
     ys = torch.randn(size=(10, 2, 16000))
-    m = NBSS()
-    ys_hat = m(x)
+
+    NBSS_with_NB_BLSTM = NBSS(n_channel=8, n_speaker=2, arch="NB_BLSTM")
+    ys_hat = NBSS_with_NB_BLSTM(x)
+    neg_sisdr_loss, best_perm = pit(preds=ys_hat, target=ys, metric_func=neg_si_sdr, eval_func='min')
+    print(ys_hat.shape, neg_sisdr_loss.mean())
+
+    NBSS_with_NBC = NBSS(n_channel=8, n_speaker=2, arch="NBC")
+    ys_hat = NBSS_with_NBC(x)
     neg_sisdr_loss, best_perm = pit(preds=ys_hat, target=ys, metric_func=neg_si_sdr, eval_func='min')
     print(ys_hat.shape, neg_sisdr_loss.mean())
