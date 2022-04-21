@@ -372,8 +372,8 @@ def load_and_resample_impulse_response(rir_file_path: str, resample_fs: int) -> 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='NBSS')
 
-    parser.add_argument('--rir_dir', default='dataset/rir_cfg_3', type=str, help='the dir of rirs')
-    parser.add_argument('--rir_cfg_file', default='configs/rir_cfg_3.json', type=str, help='rir cfg file')
+    parser.add_argument('--rir_dir', default='dataset/rir_cfg_4', type=str, help='the dir of rirs')
+    parser.add_argument('--rir_cfg_file', default='configs/rir_cfg_4.json', type=str, help='rir cfg file')
 
     parser.add_argument('--train_num', default=20000, type=int, help='num of rirs for train set')
     parser.add_argument('--validation_num', default=5000, type=int, help='num of rirs for validation set')
