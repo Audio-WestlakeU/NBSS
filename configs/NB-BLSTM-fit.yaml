@@ -35,7 +35,7 @@ model:
     patience: 10
     min_lr: 0.0001
   exp_name: exp
-  metrics: [SNR, SDR, SI_SDR, NB_PESQ, WB_PESQ]
+  metrics: [SDR, SI_SDR, NB_PESQ, WB_PESQ]
 data:
   clean_speech_dataset: wsj0-mix
   clean_speech_dir: /dev/shm/quancs/
