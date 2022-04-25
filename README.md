@@ -1,8 +1,8 @@
 # Multi-channel Narrow-band Deep Speech Separation
 
 A narrow-band speech separation method.
-The official repo of "Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training" and "Multichannel Speech Separation with Narrow-band Conformer".
-Detailed introduction (with images and examples) about this work can be found [in English](https://quancs.github.io/blog/nbss/) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
+The official repo of "[Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training](https://arxiv.org/abs/2110.05966)" accepted by ICASSP 2022 and "[Multichannel Speech Separation with Narrow-band Conformer](https://arxiv.org/abs/2204.04464)".
+Detailed introduction (with images and examples) about this work can be found [in English](https://audio.westlake.edu.cn/Research/nbss.htm) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
 More information about our group could be found at [https://audio.westlake.edu.cn](https://audio.westlake.edu.cn/Publications.htm).
 
 
