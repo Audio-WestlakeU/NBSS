@@ -45,7 +45,7 @@ python generate_rirs.py
 ```
 
 ## Train & Test
-**Train** Narrow-band Conformer (NBC) on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` is trained and test in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
+**Train** Narrow-band Conformer (NBC) on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` can be trained and tested in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
 ```
 python NBSSCLI.py fit --config=configs/NBC-fit.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0,
 ```
@@ -57,7 +57,7 @@ More gpus can be used by appending the gpu indexes to `trainer.gpus`, e.g. `--tr
 python NBSSCLI.py fit --config=logs/NBSS/version_x/config.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0, --ckpt_path=logs/NBSS/version_x/checkpoints/last.ckpt
 ```
 
-**Test** the model trained (Different seeds for dataset will generate different wavs)
+**Test** the model trained (Dataset with different seeds will generate different wavs):
 ```
 python NBSSCLI.py test --config=logs/NBSS/version_x/config.yaml --ckpt_path=logs/NBSS/version_x/checkpoints/epochY_neg_si_sdrZ.ckpt --trainer.gpus=0, --data.seeds="{'train':null,'val':2,'test':3}"
 ```
