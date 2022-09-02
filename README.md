@@ -45,6 +45,9 @@ python generate_rirs.py
 ```
 
 ## Train & Test
+**Reminder**: This project is built on the `pytorch-lightning` package, in particular its [command line interface (CLI)](https://pytorch-lightning.readthedocs.io/en/latest/cli/lightning_cli_intermediate.html). To understand the commands below, you need to have some basic knowledge about the CLI in lightning. 
+
+
 **Train** Narrow-band Conformer (NBC) on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` can be trained and tested in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
 ```
 python NBSSCLI.py fit --config=configs/NBC-fit.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0,
