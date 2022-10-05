@@ -28,7 +28,7 @@ NBC [5]			| 2.0 M		| **4.00**	| **3.78**	| **20.3**	| 1.32
 
 [4] Changsheng Quan, Xiaofei Li. **Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training**. In ICASSP 2022.
 
-[5] Changsheng Quan, Xiaofei Li. **Multichannel Speech Separation with Narrow-band Conformer**. arXiv preprint arXiv:2204.04464.
+[5] Changsheng Quan, Xiaofei Li. **Multichannel Speech Separation with Narrow-band Conformer**. In InterSpeech 2022.
 
 
 ## Requirements
