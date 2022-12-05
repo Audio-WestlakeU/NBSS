@@ -14,7 +14,7 @@ from torchmetrics.functional.audio import pit_permutate
 from torchmetrics.functional.audio import scale_invariant_signal_distortion_ratio as si_sdr
 
 from models.io.narrow_band import NBIO
-from models.utils import NumpyEncoder, tag_and_log_git_status
+from models.utils import MyJsonEncoder, tag_and_log_git_status
 from models.utils.metrics import cal_metrics_functional
 
 
@@ -42,6 +42,7 @@ class NBSS(pl.LightningModule):
         },
         exp_name: str = "exp",
         metrics: List[str] = ['SNR', 'SDR', 'SI_SDR', 'NB_PESQ', 'WB_PESQ'],
+        shuffle_chn: bool = False,
     ):
         """
         Args:
@@ -63,6 +64,7 @@ class NBSS(pl.LightningModule):
 
         # save all the hyperparameters to self.hparams
         self.save_hyperparameters(ignore=['arch', 'io'])
+        print('shuffle channel=', self.hparams.shuffle_chn)
 
         self.ref_chn_idx = channels.index(ref_channel)
 
@@ -79,6 +81,11 @@ class NBSS(pl.LightningModule):
                 # note: if change self.logger.log_dir to self.trainer.log_dir, the training will stuck on multi-gpu training
                 tag_and_log_git_status(self.logger.log_dir + '/git.out', self.logger.version, self.hparams.exp_name, model_name='NBSS')
 
+            if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir'):
+                with open(self.logger.log_dir + '/model.txt', 'a') as f:
+                    f.write(str(self))
+                    f.write('\n\n\n')
+
     def forward(self, input) -> Tuple[Tensor, Tensor]:
         """returns the preds and raw output from arch"""
         if isinstance(input, tuple) or isinstance(input, list):
@@ -92,6 +99,12 @@ class NBSS(pl.LightningModule):
         """called by dataloader threads on CPU for preparing the training batches"""
         x, ys, _ = SS_SemiOnlineDataset.collate_fn(batches)
         x = x[:, self.hparams.channels, :]
+        ys = ys[:, :, self.hparams.channels, :]
+
+        if self.hparams.shuffle_chn:
+            inx_slc = torch.randperm(len(self.hparams.channels))
+            x = torch.index_select(x, 1, inx_slc)
+            ys = torch.index_select(ys, 2, inx_slc)
         ys = ys[:, :, self.ref_chn_idx, :]
         with torch.no_grad():
             input = self.io.prepare_input(x)
@@ -174,7 +187,7 @@ class NBSS(pl.LightningModule):
             path = os.path.join(self.exp_save_path, 'results_{}.json'.format(dtstr))
             # write results to json
             f = open(path, 'w', encoding='utf-8')
-            json.dump(results, f, indent=4, cls=NumpyEncoder)
+            json.dump(results, f, indent=4, cls=MyJsonEncoder)
             f.close()
             # write mean to json
             df = DataFrame(results)
@@ -195,6 +208,7 @@ class NBSS(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """test step on self.device, called automaticly by PytorchLightning"""
         input, target, x, ys, paras = batch
+        sample_rate = 16000 if 'sample_rate' not in paras[0] else paras[0]['sample_rate']
 
         preds, output = self.forward(input)
         loss, perms = self.io.loss(preds, target)
@@ -220,7 +234,7 @@ class NBSS(pl.LightningModule):
             assert abs_max_ys_hat_perm.shape == (1, self.hparams.speaker_num, 1), "Unexcepted error, the shape of abs_max_ys_hat_perm != [batch_size, speaker_num, 1]"
             ys_hat_perm = ys_hat_perm / abs_max_ys_hat_perm * abs_max
             # calculate metrics, input_metrics, improve_metrics
-            metrics, input_metrics, imp_metrics = cal_metrics_functional(self.hparams.metrics, ys_hat_perm[0], ys[0], x_ref.expand_as(ys[0]), 16000)
+            metrics, input_metrics, imp_metrics = cal_metrics_functional(self.hparams.metrics, ys_hat_perm[0], ys[0], x_ref.expand_as(ys[0]), sample_rate)
             for key, val in imp_metrics.items():
                 self.log('test/' + key, val, logger=False, batch_size=ys.shape[0])
                 result_dict[key] = val
@@ -243,7 +257,7 @@ class NBSS(pl.LightningModule):
                     wav = wav / torch.max(torch.abs(wav)) * norm_to
                 if abs_max > 1:
                     wav /= abs_max
-                sf.write(wav_path, wav.detach().cpu().numpy(), 16000)
+                sf.write(wav_path, wav.detach().cpu().numpy(), sample_rate)
 
             pattern = '.'.join(wavname.split('.')[:-1]) + '{name}'  # remove .wav in wavname
             example_dir = os.path.join(self.exp_save_path, 'examples', str(paras[0]['index']))
@@ -261,7 +275,7 @@ class NBSS(pl.LightningModule):
             # write paras
             f = open(os.path.join(example_dir, pattern.format(name=f"_paras.json")), 'w', encoding='utf-8')
             paras[0]['metrics'] = result_dict
-            json.dump(paras[0], f, indent=4, cls=NumpyEncoder)
+            json.dump(paras[0], f, indent=4, cls=MyJsonEncoder)
             f.close()
 
         # return metrics, which will be collected, saved in test_epoch_end
@@ -306,8 +320,7 @@ class NBSS(pl.LightningModule):
 
     def configure_optimizers(self):
         """configure optimizer and lr_scheduler"""
-        assert self.hparams.optimizer == "Adam", "Adam supported only"
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate, **self.hparams.optimizer_kwargs)
+        optimizer = getattr(torch.optim, self.hparams.optimizer)(self.parameters(), lr=self.hparams.learning_rate, **self.hparams.optimizer_kwargs)
 
         if self.hparams.lr_scheduler != None and len(self.hparams.lr_scheduler) > 0:
             lr_scheduler = getattr(torch.optim.lr_scheduler, self.hparams.lr_scheduler)

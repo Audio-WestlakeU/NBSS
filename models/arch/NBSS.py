@@ -8,6 +8,7 @@ from torchmetrics.functional.audio import scale_invariant_signal_distortion_rati
 
 from models.arch.blstm2_fc1 import BLSTM2_FC1
 from models.arch.NBC import NBC
+from models.arch.NBC2 import NBC2
 
 
 def neg_si_sdr(preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -31,7 +32,7 @@ class NBSS(nn.Module):
             n_fft: int = 512,
             n_overlap: int = 256,
             ref_channel: int = 0,
-            arch: str = "NB_BLSTM",  # could be NBC
+            arch: str = "NB_BLSTM",  # could also be NBC, NBC2
             arch_kwargs: Dict[str, Any] = dict(),
     ):
         super().__init__()
@@ -40,6 +41,8 @@ class NBSS(nn.Module):
             self.arch: nn.Module = BLSTM2_FC1(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
         elif arch == "NBC":
             self.arch = NBC(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+        elif arch == 'NBC2':
+            self.arch = NBC2(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
         else:
             raise Exception(f"Unkown arch={arch}")
 
@@ -107,5 +110,28 @@ if __name__ == '__main__':
 
     NBSS_with_NBC = NBSS(n_channel=8, n_speaker=2, arch="NBC")
     ys_hat = NBSS_with_NBC(x)
+    neg_sisdr_loss, best_perm = pit(preds=ys_hat, target=ys, metric_func=neg_si_sdr, eval_func='min')
+    print(ys_hat.shape, neg_sisdr_loss.mean())
+
+    NBSS_with_NBC_small = NBSS(n_channel=8,
+                               n_speaker=2,
+                               arch="NBC2",
+                               arch_kwargs={
+                                   "n_layers": 8, # 12 for large
+                                   "dim_hidden": 96, # 192 for large
+                                   "dim_ffn": 192, # 384 for large
+                                   "block_kwargs": {
+                                       'n_heads': 2,
+                                       'dropout': 0,
+                                       'conv_kernel_size': 3,
+                                       'n_conv_groups': 8,
+                                       'norms': ("LN", "GBN", "GBN"),
+                                       'group_batch_norm_kwargs': {
+                                           'group_size': 257, # 129 for 8k Hz
+                                           'share_along_sequence_dim': False,
+                                       },
+                                   }
+                               },)
+    ys_hat = NBSS_with_NBC_small(x)
     neg_sisdr_loss, best_perm = pit(preds=ys_hat, target=ys, metric_func=neg_si_sdr, eval_func='min')
     print(ys_hat.shape, neg_sisdr_loss.mean())

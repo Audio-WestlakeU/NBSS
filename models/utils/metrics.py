@@ -1,11 +1,10 @@
 from typing import Dict, List, Optional, Tuple, Union
+import warnings
 from torchmetrics import Metric
 from torchmetrics.collections import MetricCollection
 from torchmetrics.audio import *
 from torchmetrics.functional.audio import *
 from torch import Tensor
-from mir_eval.separation import bss_eval_sources
-import torch
 
 ALL_AUDIO_METRICS = ['SDR', 'SI_SDR', 'SI_SNR', 'SNR', 'NB_PESQ', 'WB_PESQ', 'STOI']
 
@@ -125,6 +124,10 @@ def cal_metrics_functional(
             input_metric_func = lambda: short_time_objective_intelligibility(original_cpu, target_cpu, fs).mean()
         else:
             raise ValueError('Unkown audio metric ' + m)
+
+        if m.upper() == 'WB_PESQ' and fs == 8000:
+            warnings.warn("There is narrow band (nb) mode only when sampling rate is 8000Hz")
+            continue  # Note there is narrow band (nb) mode only when sampling rate is 8000Hz
 
         metrics[m.lower()] = metric_func()
         if 'input_' + mname not in input_metrics.keys():

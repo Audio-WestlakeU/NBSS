@@ -1,10 +1,14 @@
-from torch import Tensor
-from torch.utils.data import Dataset
-import torch
+from os import listdir, path
+from os.path import *
+from os.path import expanduser, join
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
+
 import numpy as np
 import soundfile as sf
-from typing import Any, Dict, List, Optional, Tuple, Union
+import torch
 from scipy.signal import convolve, resample
+from torch.utils.data import Dataset
 
 
 def randint(g: torch.Generator, low: int, high: int) -> int:
@@ -21,50 +25,61 @@ def randfloat(g: torch.Generator, low: float, high: float) -> float:
     return float(low + r * (high - low))
 
 
-class SS_SemiOnlineDataset(Dataset):
-    """语音分离半在线数据集：训练的语音是动态合成的，RIR是离线生成的
-    """
+def get_clean_wavs(spk_dir: str, min_duration: float = 4.0, wsj0_dir='~/datasets/wsj0', max_num: int = 120) -> List[str]:
+    p = expanduser(join(wsj0_dir, spk_dir))
+    files = listdir(p)
+    files.sort()
+    wavs: List[str] = []
+    dura_sum = 0
+    for w in files:
+        f = join(p, w)
+        info = sf.info(f)
+        if info.duration >= min_duration and len(wavs) < max_num:
+            wavs.append(f)
+            dura_sum += info.duration
+    rank_zero_info(f"{spk_dir} {dura_sum/60:.2f} min, {len(wavs)} wavs")
+    return wavs
 
-    @staticmethod
-    def collate_fn(batches):
-        mini_batch = []
-        for x in zip(*batches):
-            if isinstance(x[0], np.ndarray):
-                x = [torch.tensor(x[i]) for i in range(len(x))]
-            if isinstance(x[0], Tensor):
-                x = torch.stack(x)
-            mini_batch.append(x)
-        return mini_batch
 
-    def __init__(self,
-                 speeches: List[List[Dict[str, str]]],
-                 rirs: List[str],
-                 speech_overlap_ratio: Tuple[float, float],
-                 speech_scale: Tuple[float, float],
-                 audio_time_len: Optional[Union[float, str]] = None,
-                 sample_rate: Optional[int] = None) -> None:
-        """初始化
+def gen_pairs(wavs_a: List[str], wavs_b: List[str]):
+    pairs = []
+    for idx, a in enumerate(wavs_a):
+        for b in wavs_b:
+            if idx % 2 == 0:
+                pairs.append((a, b))
+            else:
+                pairs.append((b, a))
+    return pairs
 
-        Args:
-            speeches: 单通道原始语音信号的路径。对于分离任务，类型为List[List[Dict[str,str]]]；增强和去混响为List[Dict[str,str]]?
-            rirs: rir的路径，指向NPZ格式的文件。每个NPZ内部是一个Dict，其中名字为speech_rir的部分是speech的rir，名字为noise_rir的部分是noise的rir
-            speech_scale: 范围，用于重新调整语音的能量，单位为dB。分离任务为语音间相互的能量。增强和降噪？？？
-            audio_time_len: 返回语音的长度，单位秒。指定该参数则会对信号做补0和截取的操作
-            speech_overlap_ratio: 分离任务的参数，指定后会调整信号的语音信号的重叠比例
-            sample_rate: 采样率。如果指定，则会对语音和rir进行降采样或者重采样
-        """
-        self.speaker_num = len(speeches)
-        assert self.speaker_num == 2, f"Only support two speaker cases, now it's {self.speaker_num} speakers"
 
-        self.speeches = speeches
-        self.rirs = rirs
-        self.speech_scale = speech_scale
+class Spk4Wsj0mixSp(Dataset):
+
+    def __init__(
+            self,
+            spks: List[str] = ["si_tr_s/024", "si_tr_s/01y", "si_tr_s/401", "si_tr_s/02a"],
+            audio_time_len: Union[str, int] = 'nmix 4',
+            speech_overlap_ratio: Tuple[float, float] = (0.1, 1.0),
+            speech_scale: Tuple[float, float] = (-5, 5),
+            sample_rate: int = 16000,
+            speaker_num: int = 2,
+            wsj0_dir: str = '~/datasets/wsj0',
+            train_rir_dir: str = '~/datasets/rir_cfg_4/train',
+    ) -> None:
+        super().__init__()
+        assert speaker_num == 2, speaker_num
+
+        self.speaker_num = speaker_num
         self.audio_time_len = audio_time_len
         self.speech_overlap_ratio = speech_overlap_ratio
+        self.speech_scale = speech_scale
         self.sample_rate = sample_rate
 
-        # construct a mapping: (index, spk) -> the index of next uttr of the same spk
-        self.uttr_next = [[-1 for utt in range(len(self.speeches[spk]))] for spk in range(self.speaker_num)]
+        wavs = []
+        for spk in spks:
+            wavs.append(get_clean_wavs(spk_dir=spk, min_duration=4, wsj0_dir=wsj0_dir, max_num=120))
+
+        self.pairs = gen_pairs(wavs[0], wavs[1]) + gen_pairs(wavs[0], wavs[2]) + gen_pairs(wavs[0], wavs[3]) + gen_pairs(wavs[1], wavs[2]) + gen_pairs(wavs[1], wavs[3]) + gen_pairs(wavs[2], wavs[3])
+        self.rirs = [join(expanduser(train_rir_dir), r) for r in listdir(expanduser(train_rir_dir))]
 
     def __getitem__(self, index: Dict[str, int]) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:  # type: ignore
         """returns the indexed item
@@ -84,8 +99,8 @@ class SS_SemiOnlineDataset(Dataset):
 
         # step 1: load clean speeches, single channel
         cleans: List[np.ndarray] = []
-        for speech in self.speeches:
-            clean_i, samplerate_i = self.read(speech[sidx]['wav'])
+        for speech in self.pairs[sidx]:
+            clean_i, samplerate_i = self.read(speech)
             cleans.append(clean_i)
         if self.sample_rate == None:
             self.sample_rate = samplerate_i
@@ -221,24 +236,9 @@ class SS_SemiOnlineDataset(Dataset):
                 mix_frame_len = int(self.audio_time_len * self.sample_rate)  # type: ignore
             needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
 
-        # step 4: pad signals from the same speaker if they are not long to needed, then cut them to needed
+        # step 4: cut them to needed (no pad for the speeches are long enough)
         for i, clean in enumerate(cleans):
-            # search pad from index+1
-            speaker_this = self.speeches[i][sidx]['speaker']
-            idx = sidx
-            while len(clean) < needed_lens[i]:
-                if self.uttr_next[i][idx] < 0:
-                    idx_old = idx
-                    # search for the next speech from the same speaker
-                    idx = (idx + 1) % len(self.speeches[i])
-                    while self.speeches[i][idx]['speaker'] != speaker_this:
-                        idx = (idx + 1) % len(self.speeches[i])
-                    self.uttr_next[i][idx_old] = idx
-                else:  # read cached search result
-                    idx = self.uttr_next[i][idx]
-                # read and pad
-                clean_for_pad, _ = self.read(self.speeches[i][idx]['wav'])
-                clean = np.concatenate([clean, clean_for_pad])
+            assert len(clean) >= needed_lens[i], 'should be longer than needed ' + str(len(clean)) + ' ' + str(needed_lens[i])
             # cut to needed_lens[i]
             if len(clean) > needed_lens[i]:
                 start = randint(g, low=0, high=len(clean) - needed_lens[i])
@@ -288,8 +288,8 @@ class SS_SemiOnlineDataset(Dataset):
 
         paras = {
             "index": sidx,
-            "spk1": self.speeches[0][sidx],
-            "spk2": self.speeches[1][sidx],
+            "spk1": self.pairs[sidx][0],
+            "spk2": self.pairs[sidx][1],
             'seed': index['seed'],
             'rir_file': self.rirs[ridx],
             'rir': rir_info,
@@ -310,10 +310,10 @@ class SS_SemiOnlineDataset(Dataset):
         return torch.as_tensor(mix, dtype=torch.float32), torch.as_tensor(echoics, dtype=torch.float32), paras
 
     def __len__(self):
-        return self.speech_num()
+        return self.rir_num()
 
     def speech_num(self):
-        return len(self.speeches[0])
+        return len(self.pairs)
 
     def rir_num(self):
         return len(self.rirs)
@@ -326,3 +326,11 @@ class SS_SemiOnlineDataset(Dataset):
             re_len = int(clean.shape[0] * self.sample_rate / samplerate)
             clean = resample(clean, re_len)
         return clean, samplerate
+
+
+if __name__ == '__main__':
+    d = Spk4Wsj0mixSp()
+    print(len(d), d.speech_num(), d.rir_num())
+    mix, ys, paras = d[{'speech_index': 10, 'rir_index': 20, 'seed': 99}]
+    print(mix.shape, ys.shape, paras)
+    print()

@@ -1,0 +1,95 @@
+seed_everything: 2
+trainer:
+  gradient_clip_val: 5
+  gradient_clip_algorithm: norm
+  accumulate_grad_batches: null
+  strategy: ddp_find_unused_parameters_false
+  sync_batchnorm: false
+  precision: 32
+model:
+  arch:
+    class_path: models.arch.NBC2.NBC2
+    init_args:
+      n_layers: 12
+      encoder_kernel_size: 5
+      dim_hidden: 192
+      dim_ffn: 384
+      block_kwargs:
+        n_heads: 2
+        dropout: 0
+        conv_kernel_size: 3
+        n_conv_groups: 8
+        norms: [LN, GBN, GBN]
+        group_batch_norm_kwargs:
+          group_size: 257
+          share_along_sequence_dim: false
+  io:
+    class_path: models.io.narrow_band.TimeDomainSignalNB
+    init_args:
+      ft_len: 512
+      ft_overlap: 256
+      loss_func: models.io.narrow_band.td_signal_nb.neg_si_sdr
+  ref_channel: 0
+  channels: [0, 1, 2, 3, 4, 5, 6, 7]
+  learning_rate: 0.001
+  optimizer: Adam
+  optimizer_kwargs: {}
+  lr_scheduler: ExponentialLR
+  lr_scheduler_kwargs:
+    gamma: 0.99
+  exp_name: exp
+  metrics: [SDR, SI_SDR, NB_PESQ, WB_PESQ]
+data:
+  class_path: data_loaders.SS_SemiOnlineDataModule
+  init_args:
+    clean_speech_dataset: wsj0-mix
+    clean_speech_dir: ~/datasets/
+    rir_dir: ~/datasets/rir_cfg_4
+    speech_overlap_ratio:
+    - 0.1
+    - 1.0
+    speech_scale:
+    - -5.0
+    - 5.0
+    batch_size:
+    - 2
+    - 4
+    speaker_num: 2
+    audio_time_len:
+    - nmix 4
+    - nmix 4
+    - nmix 4
+    num_workers: 5
+    test_set: test
+    shuffle_train_rir: true
+    seeds:
+      train: null
+      val: 2
+      test: 3
+    pin_memory: true
+    prefetch_factor: 5
+early_stopping:
+  monitor: val/neg_si_sdr
+  min_delta: 0.05
+  patience: 30
+  verbose: false
+  mode: min
+  strict: true
+  check_finite: true
+  stopping_threshold: null
+  divergence_threshold: null
+  check_on_train_epoch_end: null
+model_checkpoint:
+  dirpath: null
+  filename: epoch{epoch}_neg_si_sdr{val/neg_si_sdr:.4f}
+  monitor: val/neg_si_sdr
+  verbose: false
+  save_last: true
+  save_top_k: 5
+  save_weights_only: false
+  mode: min
+  auto_insert_metric_name: false
+  every_n_train_steps: null
+  train_time_interval: null
+  every_n_epochs: 1
+  save_on_train_epoch_end: null

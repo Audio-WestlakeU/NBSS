@@ -1,10 +1,12 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader
 import os
 
 from .ss_semi_online_dataset import SS_SemiOnlineDataset
 from .ss_semi_online_sampler import SS_SemiOnlineSampler
+from .spk4_wsj0_mix_sp import Spk4Wsj0mixSp
 import pandas as pd
 import json
 import random
@@ -61,20 +63,25 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         # self.g.manual_seed(seed)
         # self.seeds = {'train': randint(self.g, 0, 100000), 'val': randint(self.g, 0, 100000), 'test': randint(self.g, 0, 100000)}
 
+        rank_zero_info(f'clean speech dataset: {clean_speech_dataset}')
+
         self.clean_speech_dataset = clean_speech_dataset
-        self.clean_speech_dir = clean_speech_dir
-        self.rir_dir = rir_dir
+        self.clean_speech_dir = os.path.expanduser(clean_speech_dir)
+        self.rir_dir = os.path.expanduser(rir_dir)
         assert len(speech_overlap_ratio) == 2, "should give a range"
         self.speech_overlap_ratio = (speech_overlap_ratio[0], speech_overlap_ratio[1])
-        print(f'speech overlap: train={self.speech_overlap_ratio}; val={self.speech_overlap_ratio}; test={self.speech_overlap_ratio}')
+        rank_zero_info(f'speech overlap: train={self.speech_overlap_ratio}; val={self.speech_overlap_ratio}; test={self.speech_overlap_ratio}')
 
         assert len(speech_scale) == 2, "should give a range"
         self.speech_scale = (speech_scale[0], speech_scale[1])
-        print(f'speech scale: train={self.speech_scale}; val={self.speech_scale}; test={self.speech_scale}')
+        rank_zero_info(f'speech scale: train={self.speech_scale}; val={self.speech_scale}; test={self.speech_scale}')
 
         self.batch_size = batch_size[0]
         self.batch_size_val = batch_size[1]
-        print(f'batch size: train={self.batch_size}; val={self.batch_size_val}; test=1')
+        self.batch_size_test = 1
+        if len(batch_size) > 2:
+            self.batch_size_test = batch_size[2]
+        rank_zero_info(f'batch size: train={self.batch_size}; val={self.batch_size_val}; test={self.batch_size_test}')
 
         self.speaker_num = speaker_num
         self.num_workers = num_workers
@@ -82,7 +89,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         self.audio_time_len = audio_time_len[0]
         self.audio_time_len_for_val = None if len(audio_time_len) < 2 else audio_time_len[1]
         self.audio_time_len_for_test = None if len(audio_time_len) < 3 else audio_time_len[2]
-        print(f'audio_time_len: train={self.audio_time_len}; val={self.audio_time_len_for_val}; test={self.audio_time_len_for_test}')
+        rank_zero_info(f'audio_time_len: train={self.audio_time_len}; val={self.audio_time_len_for_val}; test={self.audio_time_len_for_test}')
 
         self.collate_func_train = collate_func_train
         self.collate_func_val = collate_func_val
@@ -109,6 +116,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
         self.rirs = {}
         for sub_dir in ['train', 'validation', 'test']:
             files = os.listdir(os.path.join(self.rir_dir, sub_dir))
+            files.sort()
             files_full_path = []
             for f in files:
                 path = os.path.join(self.rir_dir, sub_dir, f)
@@ -116,8 +124,8 @@ class SS_SemiOnlineDataModule(LightningDataModule):
             self.rirs[sub_dir] = files_full_path
 
         # wsj0-mix
-        if self.clean_speech_dataset == 'wsj0-mix':
-            spk1_cfgs, spk2_cfgs = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(f'configs/{self.clean_speech_dataset}')
+        if self.clean_speech_dataset == 'wsj0-mix' or self.clean_speech_dataset == 'wsj0-mix-4spk':
+            spk1_cfgs, spk2_cfgs = SS_SemiOnlineDataModule.prepare_data_wsj0_mix(f'configs/wsj0-mix')
         # 相对路径转绝对路径
         for ds in ['train', 'validation', 'test']:
             ds_cfg = spk1_cfgs[ds]
@@ -151,7 +159,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
 
         # read wav cfgs
         if os.path.exists(wav_cfg_path):
-            print(f'read wav configuration from {wav_cfg_path}')
+            rank_zero_info(f'read wav configuration from {wav_cfg_path}')
             f = open(wav_cfg_path, 'r', encoding='utf-8')
             wav_cfg = json.load(f)
             f.close()
@@ -192,7 +200,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
                     spk2_cfg.append({'wav': inwav2_name, 'speaker': spk_name2, 'gender': gender2, 'dataset': f"wsj0-mix/{key}"})
                 spk1_cfgs[key] = spk1_cfg
                 spk2_cfgs[key] = spk2_cfg
-            print(f'write wav configuration to {wav_cfg_path}')
+            rank_zero_info(f'write wav configuration to {wav_cfg_path}')
             f = open(wav_cfg_path, 'w', encoding='utf-8')
             json.dump({'spk1_cfgs': spk1_cfgs, 'spk2_cfgs': spk2_cfgs}, f, indent=4)
             f.close()
@@ -202,13 +210,23 @@ class SS_SemiOnlineDataModule(LightningDataModule):
     def setup(self, stage=None):
         if stage is not None and stage == 'test':  # 用于训练和测试的dataset的行为是有区别的：训练时的语音，为了构造成一个batch，需要将语音截短、补0成固定长度
             # 此处按照测试的行为来生成对应的数据集：即确定性的数据集，长度为
-            self.train = SS_SemiOnlineDataset(
-                speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
-                rirs=self.rirs['train'],
-                speech_overlap_ratio=self.speech_overlap_ratio,
-                speech_scale=self.speech_scale,
-                audio_time_len=self.audio_time_len_for_test,
-            )
+            if self.clean_speech_dataset == 'wsj0-mix-4spk':
+                self.train = Spk4Wsj0mixSp(
+                    audio_time_len=self.audio_time_len,
+                    speech_overlap_ratio=self.speech_overlap_ratio,
+                    speech_scale=self.speech_scale,
+                    speaker_num=self.speaker_num,
+                    wsj0_dir=self.clean_speech_dir + '/wsj0',
+                    train_rir_dir=self.rir_dir + '/train',
+                )
+            else:
+                self.train = SS_SemiOnlineDataset(
+                    speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
+                    rirs=self.rirs['train'],
+                    speech_overlap_ratio=self.speech_overlap_ratio,
+                    speech_scale=self.speech_scale,
+                    audio_time_len=self.audio_time_len_for_test,
+                )
             self.val = SS_SemiOnlineDataset(
                 speeches=[self.spk1_cfgs['validation'], self.spk2_cfgs['validation']],
                 rirs=self.rirs['validation'],
@@ -224,13 +242,23 @@ class SS_SemiOnlineDataModule(LightningDataModule):
                 audio_time_len=self.audio_time_len_for_test,
             )
         else:  # fit
-            self.train = SS_SemiOnlineDataset(
-                speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
-                rirs=self.rirs['train'],
-                speech_overlap_ratio=self.speech_overlap_ratio,
-                speech_scale=self.speech_scale,
-                audio_time_len=self.audio_time_len,
-            )
+            if self.clean_speech_dataset == 'wsj0-mix-4spk':
+                self.train = Spk4Wsj0mixSp(
+                    audio_time_len=self.audio_time_len,
+                    speech_overlap_ratio=self.speech_overlap_ratio,
+                    speech_scale=self.speech_scale,
+                    speaker_num=self.speaker_num,
+                    wsj0_dir=self.clean_speech_dir + '/wsj0',
+                    train_rir_dir=self.rir_dir + '/train',
+                )
+            else:
+                self.train = SS_SemiOnlineDataset(
+                    speeches=[self.spk1_cfgs['train'], self.spk2_cfgs['train']],
+                    rirs=self.rirs['train'],
+                    speech_overlap_ratio=self.speech_overlap_ratio,
+                    speech_scale=self.speech_scale,
+                    audio_time_len=self.audio_time_len,
+                )
             self.val = SS_SemiOnlineDataset(
                 speeches=[self.spk1_cfgs['validation'], self.spk2_cfgs['validation']],
                 rirs=self.rirs['validation'],
@@ -280,7 +308,7 @@ class SS_SemiOnlineDataModule(LightningDataModule):
 
         return DataLoader(
             dataset,
-            batch_size=1,
+            batch_size=self.batch_size_test,
             collate_fn=self.collate_func_test,
             sampler=SS_SemiOnlineSampler(dataset, seed=self.seeds['test'], shuffle=False, shuffle_rir=True),
             num_workers=3,

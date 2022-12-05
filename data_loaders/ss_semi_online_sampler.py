@@ -41,7 +41,7 @@ class SS_SemiOnlineSampler(DistributedSampler[T_co]):
             g = torch.Generator()
             g.manual_seed(self.seed + self.epoch)
 
-            speech_indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore
+            speech_indices = torch.randperm(self.dataset.speech_num(), generator=g).tolist()  # type: ignore
             if self.shuffle_rir:
                 rir_indices = torch.randperm(self.dataset.rir_num(), generator=g).tolist()  # type: ignore
             else:
@@ -62,7 +62,13 @@ class SS_SemiOnlineSampler(DistributedSampler[T_co]):
             else:
                 rir_indices = list(range(self.dataset.rir_num()))  # type: ignore
 
-        # make rir_indices and speech_indices have the same length
+        # make rir_indices and speech_indices have the same length as the dataset
+        if len(speech_indices) > len(self.dataset):  # type: ignore
+            from .spk4_wsj0_mix_sp import Spk4Wsj0mixSp
+            assert isinstance(self.dataset, Spk4Wsj0mixSp), type(self.dataset)
+
+            speech_indices = speech_indices[:len(self.dataset)]  # type: ignore
+
         if len(rir_indices) < len(speech_indices):
             to_add_num = len(speech_indices) - len(rir_indices)
             to_add_rirs = []
