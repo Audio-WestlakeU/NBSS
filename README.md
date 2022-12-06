@@ -1,34 +1,13 @@
 # Multi-channel Narrow-band Deep Speech Separation
 
-A narrow-band speech separation method.
-The official repo of "[Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training](https://arxiv.org/abs/2110.05966)" accepted by ICASSP 2022 and "[Multichannel Speech Separation with Narrow-band Conformer](https://arxiv.org/abs/2204.04464)" accepted by InterSpeech 2022.
-Detailed introduction (with images and examples) about this work can be found [in English](https://audio.westlake.edu.cn/Research/nbss.htm) or [in Chinese](https://quancs.github.io/zh-cn/blog/nbss/).
+A multichannel speech separation method.
+The official repo of:  
+[1] Changsheng Quan, Xiaofei Li. [Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training](https://arxiv.org/abs/2110.05966). In ICASSP 2022.  
+[2] Changsheng Quan, Xiaofei Li. [Multichannel Speech Separation with Narrow-band Conformer](https://arxiv.org/abs/2204.04464). In Interspeech 2022.  
+[3] Changsheng Quan, Xiaofei Li. [NBC2: Multichannel Speech Separation with Revised Narrow-band Conformer](https://arxiv.org/abs/2212.02076). arXiv preprint arXiv:2212.02076.
+
+Audio examples can be found at [https://audio.westlake.edu.cn/Research/nbss.htm](https://audio.westlake.edu.cn/Research/nbss.htm).
 More information about our group can be found at [https://audio.westlake.edu.cn](https://audio.westlake.edu.cn/Publications.htm).
-
-
-## Results
-
-Speech Separation Performance Comparision with SOTA Speech Separation Methods for 8-Channel 2-Speaker Mixtures (reported in [5])
-
-Model			| #param	| NB-PESQ 	| WB-PESQ 	| SI-SDR	| RTF
-------			|------:	|------:	|------:	|------:	|------:
-Mixture 		| - 		| 2.05 		| 1.59 		| 0.0		| -
-Oracle MVDR [1] | - 		| 3.16	 	| 2.65 		| 11.0		| -
-FaSNet-TAC [2] 	| 2.8 M 	| 2.96 		| 2.53 		| 12.6		| 0.67
-SepFormer [3]	| 25.7 M	| 3.17		| 2.72		| 13.2		| 1.69
-SepFormerMC		| 25.7 M	| 3.42		| 3.01		| 14.9		| 1.70
-NB-BLSTM [4] 	| 1.2 M		| 3.28 		| 2.81	 	| 12.8		| 0.37
-NBC [5]			| 2.0 M		| **4.00**	| **3.78**	| **20.3**	| 1.32
-
-[1] https://github.com/Enny1991/beamformers
-
-[2] Yi Luo, Zhuo Chen, Nima Mesgarani, and Takuya Yoshioka. End-to-end Microphone Permutation and Number Invariant Multi-channel Speech Separation. In ICASSP 2020.
-
-[3] C. Subakan, M. Ravanelli, S. Cornell, M. Bronzi, and J. Zhong. Attention Is All You Need In Speech Separation. In ICASSP 2021.
-
-[4] Changsheng Quan, Xiaofei Li. **Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training**. In ICASSP 2022.
-
-[5] Changsheng Quan, Xiaofei Li. **Multichannel Speech Separation with Narrow-band Conformer**. In InterSpeech 2022.
 
 
 ## Requirements
@@ -45,29 +24,28 @@ python generate_rirs.py
 ```
 
 ## Train & Test
-**Reminder**: This project is built on the `pytorch-lightning` package, in particular its [command line interface (CLI)](https://pytorch-lightning.readthedocs.io/en/latest/cli/lightning_cli_intermediate.html). To understand the commands below, you need to have some basic knowledge about the CLI in lightning. 
+This project is built on the `pytorch-lightning` package, in particular its [command line interface (CLI)](https://pytorch-lightning.readthedocs.io/en/latest/cli/lightning_cli_intermediate.html). Thus we recommond you to have some basic knowledge about the CLI in lightning. 
 
 
-**Train** Narrow-band Conformer (NBC) on the 0-th GPU with config file `configs/NBC-fit.yaml` (replace the rir & clean speech dir before training, and NB-BLSTM `configs/NB-BLSTM-fit.yaml` can be trained and tested in the same way but mind to change the valid batch size). **The valid batch size = num of gpus used * batch_size for dataloader * accumulate_grad_batches.** In the following case, we have a valid batch size of 16= 1* 2 * 8.
+**Train** NBC2 on the 0-th GPU with config file `configs/NBC2_small.yaml` or `configs/NBC2_large.yaml` (replace the rir & clean speech dir before training).
 ```
-python NBSSCLI.py fit --config=configs/NBC-fit.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0,
+python NBSSCLI.py fit --config=configs/NBC2_small.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=1 --trainer.gpus=0,
 ```
 More gpus can be used by appending the gpu indexes to `trainer.gpus`, e.g. `--trainer.gpus=0,1,2,3,`.
+
+Configs `configs/NBC-fit.yaml` and `configs/NB-BLSTM-fit.yaml` can be used to train and test NBC and NB-BLSTM in the same way respectively. But mind to change the number of utterances in one mini-batch. As we use ddp for distributed training, **the number of utterances in one mini-batch = num of gpus used * the number of utterances for dataloader * accumulate_grad_batches.** In the above command, we have 2 utterances in one mini-batch, i.e. 1 * 2 * 1.
 
 
 **Resume** training from a checkpoint:
 ```
-python NBSSCLI.py fit --config=logs/NBSS/version_x/config.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=8 --trainer.gpus=0, --ckpt_path=logs/NBSS/version_x/checkpoints/last.ckpt
+python NBSSCLI.py fit --config=logs/NBSS/version_x/config.yaml --data.batch_size=[2,2] --trainer.accumulate_grad_batches=1 --trainer.gpus=0, --ckpt_path=logs/NBSS/version_x/checkpoints/last.ckpt
 ```
+where `version_x` should be replaced with the version you want to resume.
 
 **Test** the model trained (Dataset with different seeds will generate different wavs):
 ```
 python NBSSCLI.py test --config=logs/NBSS/version_x/config.yaml --ckpt_path=logs/NBSS/version_x/checkpoints/epochY_neg_si_sdrZ.ckpt --trainer.gpus=0, --data.seeds="{'train':null,'val':2,'test':3}"
 ```
 
-
 ## Module Version
 see models/arch/NBSS.py
-
-## Citation
-If you like this work and want to cite us, please cite [4, 5].
