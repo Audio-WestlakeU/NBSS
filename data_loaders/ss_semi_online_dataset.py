@@ -106,32 +106,9 @@ class SS_SemiOnlineDataset(Dataset):
             needed_lens = [clean.shape[0] for clean in cleans]
             speech_overlap_ratio_for_this = np.min(needed_lens) / np.max(needed_lens)
             mix_frame_len = max(needed_lens)
-        elif str.startswith(str(self.audio_time_len), "mix"):  # eg: mix 5
-            # sample a type
-            mix_type_num = 3 if str.startswith(str(self.audio_time_len), "mix3") else 2
-            types = ['mid', 'headtail', 'full']
-            which_type = randint(g, low=0, high=mix_type_num)
-            ovlp_type = types[which_type]
-            # cal needed_lens
-            speech_overlap_ratio_for_this = randfloat(g, low=self.speech_overlap_ratio[0], high=self.speech_overlap_ratio[1])
-            mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
-            if ovlp_type == "mid":  # part-full 5
-                # for part-full 'n', pad and cut, overlap_ratio=sampled
-                needed_lens = [clean.shape[0] for clean in cleans]
-                max_idx = needed_lens.index(max(needed_lens))
-                min_idx = needed_lens.index(min(needed_lens))
-                if max_idx == min_idx:
-                    max_idx = [1, 0][max_idx]
-                needed_lens[max_idx] = mix_frame_len
-                needed_lens[min_idx] = int(mix_frame_len * speech_overlap_ratio_for_this)  # type:ignore
-            elif ovlp_type == "headtail":  # 5
-                needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
-            else:  # full:
-                speech_overlap_ratio_for_this = 1.0
-                needed_lens = [mix_frame_len] * self.speaker_num
         elif str.startswith(str(self.audio_time_len), "nmix"):  # eg: nmix 5
             # sample a type
-            types = ['mid', 'headtail', ['front', 'end']]  # type:ignore
+            types = ['mid', 'headtail', ['start', 'end']]  # type:ignore
             which_type = randint(g, low=0, high=len(types))
             if isinstance(types[which_type], list):
                 types = types[which_type]  # type:ignore
@@ -142,7 +119,7 @@ class SS_SemiOnlineDataset(Dataset):
             mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
             if ovlp_type == "headtail":  # 5
                 needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
-            else:  # mid or front or end
+            else:  # mid or start or end
                 # pad and cut, overlap_ratio=sampled
                 needed_lens = [clean.shape[0] for clean in cleans]
                 max_idx = needed_lens.index(max(needed_lens))
@@ -153,7 +130,7 @@ class SS_SemiOnlineDataset(Dataset):
                 needed_lens[min_idx] = int(mix_frame_len * speech_overlap_ratio_for_this)  # type:ignore
         elif str.startswith(str(self.audio_time_len), "all-mix"):  # eg: all-mix 5
             # sample a type
-            types = ['full', 'mid', 'headtail', ['front', 'end']]  # type:ignore
+            types = ['full', 'mid', 'headtail', ['start', 'end']]  # type:ignore
             which_type = randint(g, low=0, high=len(types))
             if isinstance(types[which_type], list):
                 types = types[which_type]  # type:ignore
@@ -166,7 +143,7 @@ class SS_SemiOnlineDataset(Dataset):
             mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
             if ovlp_type == "headtail":  # 5
                 needed_lens = [int(mix_frame_len * (0.5 + speech_overlap_ratio_for_this / 2))] * self.speaker_num
-            else:  # full, mid or front or end
+            else:  # full, mid or start or end
                 # pad and cut, overlap_ratio=sampled
                 needed_lens = [clean.shape[0] for clean in cleans]
                 max_idx = needed_lens.index(max(needed_lens))
@@ -175,13 +152,13 @@ class SS_SemiOnlineDataset(Dataset):
                     max_idx = [1, 0][max_idx]
                 needed_lens[max_idx] = mix_frame_len
                 needed_lens[min_idx] = int(mix_frame_len * speech_overlap_ratio_for_this)  # type:ignore
-        elif str.startswith(str(self.audio_time_len), "frontend"):  # eg: frontend 5
+        elif str.startswith(str(self.audio_time_len), "startend"):  # eg: startend 5
             speech_overlap_ratio_for_this = randfloat(g, low=self.speech_overlap_ratio[0], high=self.speech_overlap_ratio[1])
             # sample a type
-            types = ['front', 'end']
+            types = ['start', 'end']
             which_type = randint(g, low=0, high=len(types))
             ovlp_type = types[which_type]
-            # for frontend 'n', pad and cut, overlap_ratio=sampled
+            # for startend 'n', pad and cut, overlap_ratio=sampled
             mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
 
             needed_lens = [clean.shape[0] for clean in cleans]
@@ -204,6 +181,13 @@ class SS_SemiOnlineDataset(Dataset):
                 max_idx = [1, 0][max_idx]
             needed_lens[max_idx] = mix_frame_len
             needed_lens[min_idx] = int(mix_frame_len * speech_overlap_ratio_for_this)  # type:ignore
+        elif str.startswith(str(self.audio_time_len), "full"):  # eg: full 5
+            ovlp_type = "full"
+
+            speech_overlap_ratio_for_this = 1
+            mix_frame_len = int(float(str(self.audio_time_len).split(" ")[1].strip()) * self.sample_rate)  # type:ignore
+
+            needed_lens = [mix_frame_len, mix_frame_len]
         elif self.audio_time_len == "min":
             ovlp_type = "full"
             # for min, cut the longer audio to the shorter length, no pad, overlap_ratio=1
@@ -269,7 +253,7 @@ class SS_SemiOnlineDataset(Dataset):
                 if needed_lens[other] == mix_frame_len:  # if other speech is full of the length
                     if start == None:  # use the same start for all the channels of one speaker
                         start = randint(g, low=0, high=mix_frame_len - needed_lens[i] + 1)  # [0, mix_frame_len - needed_lens[i]]
-                        if ovlp_type == "front":
+                        if ovlp_type == "start":
                             start = 0
                         elif ovlp_type == "end":
                             start = mix_frame_len - needed_lens[i]
