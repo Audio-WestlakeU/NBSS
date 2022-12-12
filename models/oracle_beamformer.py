@@ -16,7 +16,7 @@ from pandas.core.frame import DataFrame
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cli import (LightningArgumentParser, LightningCLI)
 from torch import Tensor
-from models.metrics import cal_metrics_functional
+from models.utils.metrics import cal_metrics_functional
 from torchmetrics.functional.audio import permutation_invariant_training as pit, pit_permutate, scale_invariant_signal_distortion_ratio as si_sdr
 
 COMMON_AUDIO_METRICS = ['SDR', 'SI_SDR', 'SI_SNR', 'NB_PESQ', 'WB_PESQ']
