@@ -22,7 +22,7 @@ def randfloat(g: torch.Generator, low: float, high: float) -> float:
 
 
 class SS_SemiOnlineDataset(Dataset):
-    """语音分离半在线数据集：训练的语音是动态合成的，RIR是离线生成的
+    """A semi-online dataset for speech separation: dynamicly convolve RIRs and speech pairs
     """
 
     @staticmethod
@@ -43,15 +43,15 @@ class SS_SemiOnlineDataset(Dataset):
                  speech_scale: Tuple[float, float],
                  audio_time_len: Optional[Union[float, str]] = None,
                  sample_rate: Optional[int] = None) -> None:
-        """初始化
+        """initialze 
 
         Args:
-            speeches: 单通道原始语音信号的路径。对于分离任务，类型为List[List[Dict[str,str]]]；增强和去混响为List[Dict[str,str]]?
-            rirs: rir的路径，指向NPZ格式的文件。每个NPZ内部是一个Dict，其中名字为speech_rir的部分是speech的rir，名字为noise_rir的部分是noise的rir
-            speech_scale: 范围，用于重新调整语音的能量，单位为dB。分离任务为语音间相互的能量。增强和降噪？？？
-            audio_time_len: 返回语音的长度，单位秒。指定该参数则会对信号做补0和截取的操作
-            speech_overlap_ratio: 分离任务的参数，指定后会调整信号的语音信号的重叠比例
-            sample_rate: 采样率。如果指定，则会对语音和rir进行降采样或者重采样
+            speeches: paths of single channel clean speech pairs
+            rirs: paths of RIRs (.npz format). Each file contains a dict, where the keys `speech_rir`, `noise_rir` are for speeches and noises
+            speech_scale: a range to rescale the relative energy of speeches, dB.
+            audio_time_len: audio signal length (in seconds). Shorter signals will be appended zeros, longer signals will be cut to the length
+            speech_overlap_ratio: the speech overlap ratio of speeches
+            sample_rate: sample rate. if specified, signals will be downsampled or upsampled.
         """
         self.speaker_num = len(speeches)
         assert self.speaker_num == 2, f"Only support two speaker cases, now it's {self.speaker_num} speakers"
