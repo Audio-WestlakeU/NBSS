@@ -1,42 +1,36 @@
 """
 Command Line Interface for NBSS, provides command line controls for training, test, and inference
 """
-
 import os
 
+os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'  # enable bf16 in pytorch 1.12, see https://github.com/Lightning-AI/lightning/issues/11933#issuecomment-1181590004
 os.environ["OMP_NUM_THREADS"] = str(8)  # limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
 
 import torch
-from jsonargparse import lazy_instance
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, ModelSummary
-from pytorch_lightning.utilities.cli import LightningArgumentParser, LightningCLI
 
-from data_loaders import SS_SemiOnlineDataModule
-from models.arch.blstm2_fc1 import BLSTM2_FC1
-from models.io.narrow_band.td_signal_nb import TimeDomainSignalNB
+torch.backends.cuda.matmul.allow_tf32 = True  # The flag below controls whether to allow TF32 on matmul. This flag defaults to False in PyTorch 1.12 and later.
+torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
+# torch.set_float32_matmul_precision('medium')
+
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, ModelSummary
+from pytorch_lightning.cli import LightningArgumentParser, LightningCLI
+
 from models.NBSS import NBSS
 from models.utils import MyRichProgressBar as RichProgressBar
 # from pytorch_lightning.loggers import TensorBoardLogger
 from models.utils.my_logger import MyLogger as TensorBoardLogger
+from models.utils.my_save_config_callback import MySaveConfigCallback as SaveConfigCallback
 
 
 class NBSSCLI(LightningCLI):
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser) -> None:
-        parser.set_defaults({
-            "data.clean_speech_dataset": "wsj0-mix",
-            "data.clean_speech_dir": "/dev/shm/quancs/",
-            "data.rir_dir": "/dev/shm/quancs/rir_cfg_4",
-            # "trainer.benchmark": True,
-            "model.arch": lazy_instance(BLSTM2_FC1, hidden_size=[256, 128], activation="", input_size=16, output_size=4),
-            "model.io": lazy_instance(TimeDomainSignalNB, ft_len=512, ft_overlap=256),
-        })
-
         # link args
         parser.link_arguments("model.channels", "model.arch.init_args.input_size", compute_fn=lambda channels: 2 * len(channels), apply_on="parse")
         import importlib
         parser.link_arguments(
-            ("data.speaker_num", "model.io.class_path"),
+            ("model.speaker_num", "model.io.class_path"),
             "model.arch.init_args.output_size",
             compute_fn=lambda spk_num, class_path: spk_num * getattr(importlib.import_module('.'.join(class_path.split('.')[:-1])),
                                                                      class_path.split('.')[-1]).size_per_spk,
@@ -48,18 +42,27 @@ class NBSSCLI(LightningCLI):
             compute_fn=lambda channels, ref_channel: channels.index(ref_channel),
             apply_on="parse",
         )  # when parse config file
-        parser.link_arguments("data.speaker_num", "model.io.init_args.spk_num", apply_on="parse")  # when parse config file
-        parser.link_arguments("data.speaker_num", "model.speaker_num", apply_on="parse")  # when parse config file
+        parser.link_arguments("model.speaker_num", "model.io.init_args.spk_num", apply_on="parse")  # when parse config file
         # link functions
-        parser.link_arguments("model.collate_func_train", "data.collate_func_train", apply_on="instantiate")  # after instantiate model
-        parser.link_arguments("model.collate_func_val", "data.collate_func_val", apply_on="instantiate")  # after instantiate model
-        parser.link_arguments("model.collate_func_test", "data.collate_func_test", apply_on="instantiate")  # after instantiate model
+        parser.link_arguments("model.collate_func_train", "data.init_args.collate_func_train", apply_on="instantiate")  # after instantiate model
+        parser.link_arguments("model.collate_func_val", "data.init_args.collate_func_val", apply_on="instantiate")  # after instantiate model
+        parser.link_arguments("model.collate_func_test", "data.init_args.collate_func_test", apply_on="instantiate")  # after instantiate model
 
+        self.add_model_invariant_arguments_to_parser(parser)
+
+    def add_model_invariant_arguments_to_parser(self, parser) -> None:
         # RichProgressBar
         parser.add_lightning_class_args(RichProgressBar, nested_key='progress_bar')
-        parser.set_defaults({
-            "progress_bar.refresh_rate_per_second": 1,
-        })
+        if pl.__version__.startswith('1.5.'):
+            parser.set_defaults({
+                "progress_bar.refresh_rate_per_second": 1,
+            })
+        else:
+            parser.set_defaults({"progress_bar.console_kwargs": {
+                "force_terminal": True,
+                "no_color": True,
+                "width": 200,
+            }})
 
         # EarlyStopping
         parser.add_lightning_class_args(EarlyStopping, "early_stopping")
@@ -98,8 +101,6 @@ class NBSSCLI(LightningCLI):
         }
         parser.set_defaults(model_summary_defaults)
 
-        return super().add_arguments_to_parser(parser)
-
     def before_fit(self):
         resume_from_checkpoint: str = self.config['fit']['trainer']["resume_from_checkpoint"] or self.config['fit']['ckpt_path']
         if resume_from_checkpoint is not None and resume_from_checkpoint.endswith('last.ckpt'):
@@ -114,34 +115,6 @@ class NBSSCLI(LightningCLI):
             model_name = str(self.model_class).split('\'')[1].split('.')[-1]
             self.trainer.logger = TensorBoardLogger('logs/', name=model_name, default_hp_metric=False)
 
-    def after_fit(self):
-        if self.trainer.limit_test_batches is not None and self.trainer.limit_test_batches <= 0:
-            return
-        # test
-        torch.set_num_interop_threads(5)
-        torch.set_num_threads(5)
-        resume_from_checkpoint = self.trainer.checkpoint_callback.best_model_path
-        if resume_from_checkpoint is None or resume_from_checkpoint == "":
-            if self.trainer.is_global_zero:
-                print("no checkpoint found, so test is ignored")
-            return
-        epoch = os.path.basename(resume_from_checkpoint).split('_')[0]
-        write_dir = os.path.dirname(os.path.dirname(resume_from_checkpoint))
-        exp_save_path = os.path.normpath(write_dir + '/' + epoch + '_' + self.config['fit']['data']["test_set"] + '_set')
-
-        # comment the following code to disable the test after fit
-        import torch.distributed as dist
-        if self.trainer.is_global_zero:
-            self.trainer.logger = TensorBoardLogger(exp_save_path, name="", default_hp_metric=False)
-            versions = [self.trainer.logger.version]
-        else:
-            versions = [None]
-        if self.trainer.world_size > 1:
-            dist.broadcast_object_list(versions)
-            self.trainer.logger = TensorBoardLogger(exp_save_path, name="", version=versions[0], default_hp_metric=False)
-        self.trainer.test(ckpt_path=resume_from_checkpoint, datamodule=self.datamodule)
-        self.after_test()
-
     def before_test(self):
         torch.set_num_interop_threads(5)
         torch.set_num_threads(5)
@@ -151,9 +124,18 @@ class NBSSCLI(LightningCLI):
             raise Exception('You should give --ckpt_path if you want to test')
         epoch = os.path.basename(ckpt_path).split('_')[0]
         write_dir = os.path.dirname(os.path.dirname(ckpt_path))
-        exp_save_path = os.path.normpath(write_dir + '/' + epoch + '_' + self.config['test']['data']["test_set"] + '_set')
 
+        test_set = 'test'
+        if 'test_set' in self.config['test']['data']:
+            test_set = self.config['test']['data']["test_set"]
+        elif 'init_args' in self.config['test']['data'] and 'test_set' in self.config['test']['data']['init_args']:
+            test_set = self.config['test']['data']['init_args']["test_set"]
+        exp_save_path = os.path.normpath(write_dir + '/' + epoch + '_' + test_set + '_set')
+
+        import time
+        # add 10 seconds for threads to simultaneously detect the next version
         self.trainer.logger = TensorBoardLogger(exp_save_path, name='', default_hp_metric=False)
+        time.sleep(10)
 
     def after_test(self):
         if not self.trainer.is_global_zero:
@@ -166,4 +148,10 @@ class NBSSCLI(LightningCLI):
 
 
 if __name__ == '__main__':
-    cli = NBSSCLI(NBSS, SS_SemiOnlineDataModule, seed_everything_default=None, save_config_overwrite=True)
+    cli = NBSSCLI(
+        NBSS,
+        pl.LightningDataModule,
+        save_config_overwrite=True,
+        save_config_callback=SaveConfigCallback,
+        subclass_mode_data=True,
+    )
