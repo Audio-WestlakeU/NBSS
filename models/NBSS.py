@@ -42,7 +42,6 @@ class NBSS(pl.LightningModule):
         },
         exp_name: str = "exp",
         metrics: List[str] = ['SNR', 'SDR', 'SI_SDR', 'NB_PESQ', 'WB_PESQ'],
-        shuffle_chn: bool = False,
     ):
         """
         Args:
@@ -64,8 +63,7 @@ class NBSS(pl.LightningModule):
 
         # save all the hyperparameters to self.hparams
         self.save_hyperparameters(ignore=['arch', 'io'])
-        print('shuffle channel=', self.hparams.shuffle_chn)
-
+        
         self.ref_chn_idx = channels.index(ref_channel)
 
         self.io = io
@@ -100,11 +98,6 @@ class NBSS(pl.LightningModule):
         x, ys, _ = SS_SemiOnlineDataset.collate_fn(batches)
         x = x[:, self.hparams.channels, :]
         ys = ys[:, :, self.hparams.channels, :]
-
-        if self.hparams.shuffle_chn:
-            inx_slc = torch.randperm(len(self.hparams.channels))
-            x = torch.index_select(x, 1, inx_slc)
-            ys = torch.index_select(ys, 2, inx_slc)
         ys = ys[:, :, self.ref_chn_idx, :]
         with torch.no_grad():
             input = self.io.prepare_input(x)
