@@ -217,15 +217,12 @@ class NBSS(pl.LightningModule):
         exception = False
         try:
             x_ref = x[0, self.ref_chn_idx, :]
+            # recover wav's original scale. solve min ||Y^T a - xref|| to obtain the scales of the predictions of speakers, cuz sisdr will lose scale
+            a = torch.linalg.lstsq(ys_hat[0,].T, x_ref.unsqueeze(-1)).solution
+            ys_hat = ys_hat * a.unsqueeze(0)
+            # reorder
             _, perms = pit(preds=ys_hat, target=ys, metric_func=si_sdr, eval_func='max')
             ys_hat_perm = pit_permutate(ys_hat, perms)  # reorder first by using si_sdr metric
-            # norm wav first
-            abs_max = torch.max(torch.abs(ys), dim=2, keepdim=True)[0]
-            abs_max_ys_hat_perm = torch.max(torch.abs(ys_hat_perm), dim=2, keepdim=True)[0]
-            # assert to make sure we don't mess up the ys and ys_hat
-            assert abs_max.shape == (1, self.hparams.speaker_num, 1), "Unexcepted error, the shape of abs_max != [batch_size, speaker_num, 1]"
-            assert abs_max_ys_hat_perm.shape == (1, self.hparams.speaker_num, 1), "Unexcepted error, the shape of abs_max_ys_hat_perm != [batch_size, speaker_num, 1]"
-            ys_hat_perm = ys_hat_perm / abs_max_ys_hat_perm * abs_max
             # calculate metrics, input_metrics, improve_metrics
             metrics, input_metrics, imp_metrics = cal_metrics_functional(self.hparams.metrics, ys_hat_perm[0], ys[0], x_ref.expand_as(ys[0]), sample_rate)
             for key, val in imp_metrics.items():
