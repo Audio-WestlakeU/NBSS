@@ -186,6 +186,7 @@ class NBSS(pl.LightningModule):
             df = DataFrame(results)
             df['except_num'] = self.expt_num
             df.mean(numeric_only=True).to_json(os.path.join(self.exp_save_path, 'results_mean.json'), indent=4)
+            self.print('results: ', os.path.join(self.exp_save_path, 'results_mean.json'), ' ', path)
         print('except num ' + str(self.expt_num))
 
     def collate_func_test(self, batches):
