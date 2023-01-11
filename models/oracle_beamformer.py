@@ -129,7 +129,7 @@ def estimate_steering_vector(target_stft=None, mixture_stft=None, noise_stft=Non
     # rescale eigenvectors by eigenvalues for each frequency
     for vec, val in zip(eigen_vec, eigen_val):
         if val != 0.0:
-            # the part changed from the MVDR implementation https://github.com/Enny1991/beamformers
+            # the part is modified from the MVDR implementation https://github.com/Enny1991/beamformers
             # vec = vec * val / np.abs(val)
             vec = vec / vec[0]  # normalized to the first channel
             h.append(vec)
@@ -395,5 +395,6 @@ class BeamformerCLI(LightningCLI):
         model_name = str(self.model_class).split('\'')[1].split('.')[-1]
         self.trainer.logger = TensorBoardLogger('logs/', name=model_name, default_hp_metric=False)
 
+# command: python -m models.oracle_beamformer test --data.seeds="{'train': 1,'val': 2,'test': 3}" --data.clean_speech_dir=~/datasets/ --data.rir_dir=~/datasets/rir_cfg_4 --data.audio_time_len="['headtail 4','headtail 4','headtail 4']"
 
 cli = BeamformerCLI(OracleBeamformer, SS_SemiOnlineDataModule, seed_everything_default=None)
