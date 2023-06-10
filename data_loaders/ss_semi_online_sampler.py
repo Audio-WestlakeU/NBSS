@@ -49,7 +49,8 @@ class SS_SemiOnlineSampler(DistributedSampler[T_co]):
 
             if self.last_epoch >= self.epoch:
                 import warnings
-                warnings.warn('the epoch value doesn\'t update when shuffle is true, the training data and sequence won\'t change along with different epochs')
+                if self.epoch != 0:
+                    warnings.warn('the epoch value doesn\'t update when shuffle is true, the training data and sequence won\'t change along with different epochs')
             else:
                 self.last_epoch = self.epoch
         else:
