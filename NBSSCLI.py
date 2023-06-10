@@ -53,16 +53,11 @@ class NBSSCLI(LightningCLI):
     def add_model_invariant_arguments_to_parser(self, parser) -> None:
         # RichProgressBar
         parser.add_lightning_class_args(RichProgressBar, nested_key='progress_bar')
-        if pl.__version__.startswith('1.5.'):
-            parser.set_defaults({
-                "progress_bar.refresh_rate_per_second": 1,
-            })
-        else:
-            parser.set_defaults({"progress_bar.console_kwargs": {
-                "force_terminal": True,
-                "no_color": True,
-                "width": 200,
-            }})
+        parser.set_defaults({"progress_bar.console_kwargs": {
+            "force_terminal": True,
+            "no_color": True,
+            "width": 200,
+        }})
 
         # EarlyStopping
         parser.add_lightning_class_args(EarlyStopping, "early_stopping")
@@ -95,17 +90,17 @@ class NBSSCLI(LightningCLI):
         parser.set_defaults(learning_rate_monitor_defaults)
 
         # ModelSummary
-        parser.add_lightning_class_args(ModelSummary, 'model_summary')
-        model_summary_defaults = {
-            "model_summary.max_depth": -1,
-        }
-        parser.set_defaults(model_summary_defaults)
+        # parser.add_lightning_class_args(ModelSummary, 'model_summary')
+        # model_summary_defaults = {
+        #     "model_summary.max_depth": 1,
+        # }
+        # parser.set_defaults(model_summary_defaults)
 
     def before_fit(self):
-        resume_from_checkpoint: str = self.config['fit']['trainer']["resume_from_checkpoint"] or self.config['fit']['ckpt_path']
+        resume_from_checkpoint: str = self.config['fit']['ckpt_path']
         if resume_from_checkpoint is not None and resume_from_checkpoint.endswith('last.ckpt'):
             # log in same dir
-            # resume_from_checkpoint example: /mnt/home/quancs/projects/NBSS_pmt/logs/NBSS_ifp/version_29/checkpoints/last.ckpt
+            # ckpt_path example: /mnt/home/quancs/projects/NBSS_pmt/logs/NBSS_ifp/version_29/checkpoints/last.ckpt
             resume_from_checkpoint = os.path.normpath(resume_from_checkpoint)
             splits = resume_from_checkpoint.split(os.path.sep)
             version = int(splits[-3].replace('version_', ''))
@@ -118,7 +113,7 @@ class NBSSCLI(LightningCLI):
     def before_test(self):
         torch.set_num_interop_threads(5)
         torch.set_num_threads(5)
-        if self.config['test']['ckpt_path'] != None:
+        if self.config['test']['ckpt_path'] is not None:
             ckpt_path = self.config['test']['ckpt_path']
         else:
             raise Exception('You should give --ckpt_path if you want to test')
@@ -151,7 +146,7 @@ if __name__ == '__main__':
     cli = NBSSCLI(
         NBSS,
         pl.LightningDataModule,
-        save_config_overwrite=True,
         save_config_callback=SaveConfigCallback,
+        save_config_kwargs={'overwrite': True},
         subclass_mode_data=True,
     )

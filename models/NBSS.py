@@ -144,7 +144,7 @@ class NBSS(pl.LightningModule):
         os.makedirs(self.exp_save_path, exist_ok=True)
         self.expt_num = 0
 
-    def test_epoch_end(self, results):
+    def on_test_epoch_end(self, results):
         """Called by PytorchLightning automatically at the end of test epoch"""
         import torch.distributed as dist
 

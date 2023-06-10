@@ -35,10 +35,10 @@ This project is built on the `pytorch-lightning` package, in particular its [com
 python NBSSCLI.py fit --config=configs/NBC2_small.yaml \
  --data.batch_size=[2,2] \ # batch size for train and val
  --trainer.accumulate_grad_batches=1 \
- --trainer.gpus=0,
+ --trainer.devices=0,
 ```
 
-More gpus can be used by appending the gpu indexes to `trainer.gpus`, e.g. `--trainer.gpus=0,1,2,3,`.
+More gpus can be used by appending the gpu indexes to `trainer.devices`, e.g. `--trainer.devices=0,1,2,3,`.
 
 Configs `configs/NBC-fit.yaml` and `configs/NB-BLSTM-fit.yaml` can be used to train and test NBC and NB-BLSTM in the same way respectively. But mind to change the number of utterances for training in one mini-batch. As we use ddp for distributed training, **the number of utterances in one mini-batch = num of gpus used * the number of utterances for dataloader * accumulate_grad_batches.** In the above command, we have 2 utterances in one mini-batch, i.e. 1 *2* 1.
 
@@ -48,7 +48,7 @@ Configs `configs/NBC-fit.yaml` and `configs/NB-BLSTM-fit.yaml` can be used to tr
 python NBSSCLI.py fit --config=logs/NBSS/version_x/config.yaml \
  --data.batch_size=[2,2] \
  --trainer.accumulate_grad_batches=1 \ 
- --trainer.gpus=0, \ 
+ --trainer.devices=0, \ 
  --ckpt_path=logs/NBSS/version_x/checkpoints/last.ckpt
 ```
 
@@ -59,7 +59,7 @@ where `version_x` should be replaced with the version you want to resume.
 ```bash
 python NBSSCLI.py test --config=logs/NBSS/version_x/config.yaml \ 
  --ckpt_path=logs/NBSS/version_x/checkpoints/epochY_neg_si_sdrZ.ckpt \ 
- --trainer.gpus=0, \ 
+ --trainer.devices=0, \ 
  --data.seeds="{'train':null,'val':2,'test':3}" \ 
  --data.audio_time_len="['headtail 4', 'headtail 4', 'headtail 4']"
 ```
