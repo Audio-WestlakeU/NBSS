@@ -1,4 +1,4 @@
-# Multi-channel (Narrow-band) Deep Speech Separation
+# Multi-channel Speech Separation, Denoising and Dereverberation
 
 A multichannel speech separation method.
 The official repo of:  
