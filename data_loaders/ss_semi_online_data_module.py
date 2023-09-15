@@ -1,3 +1,6 @@
+# the dataset used in `Changsheng Quan, Xiaofei Li. NBC2: Multichannel Speech Separation with Revised Narrow-band Conformer. arXiv:2212.02076.`
+
+
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.rank_zero import rank_zero_info

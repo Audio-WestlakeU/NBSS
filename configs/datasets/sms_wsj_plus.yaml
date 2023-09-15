@@ -1,0 +1,15 @@
+data:
+  class_path: data_loaders.sms_wsj_plus.SmsWsjPlusDataModule
+  init_args:
+    sms_wsj_dir: ~/datasets/sms_wsj/
+    rir_dir: ~/datasets/SMS_WSJ_Plus_rirs/
+    target: direct_path
+    datasets: ["train_si284", "cv_dev93", "test_eval92", "test_eval92"]
+    audio_time_len: [4.0, 4.0, null, null]
+    ovlp: mid
+    speech_overlap_ratio: [0.1, 1.0]
+    sir: [-5, 5]
+    snr: [0, 20]
+    num_spk: 2
+    noise_type: ["babble", "white"]
+    batch_size: [2, 1]

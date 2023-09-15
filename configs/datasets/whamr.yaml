@@ -1,0 +1,9 @@
+data:
+  class_path: data_loaders.whamr.WHAMRDataModule
+  init_args:
+    whamr_dir: ~/datasets/whamr
+    version: min
+    target: anechoic
+    sample_rate: 8000
+    audio_time_len: [4.0, 4.0, null]
+    batch_size: [2, 1]

@@ -1,3 +1,6 @@
+# the 4-speaker dataset used in `Changsheng Quan, Xiaofei Li. NBC2: Multichannel Speech Separation with Revised Narrow-band Conformer. arXiv:2212.02076.`
+
+
 from os import listdir, path
 from os.path import *
 from os.path import expanduser, join

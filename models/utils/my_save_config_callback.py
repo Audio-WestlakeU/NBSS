@@ -5,7 +5,7 @@ from pytorch_lightning.cli import SaveConfigCallback
 
 
 class MySaveConfigCallback(SaveConfigCallback):
-    ignores: List[str] = ['progress_bar', 'model_checkpoint', 'learning_rate_monitor', 'model_summary']
+    ignores: List[str] = ['progress_bar', 'learning_rate_monitor', 'model_summary'] # 'model_checkpoint', 
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: Optional[str] = None) -> None:
         for ignore in MySaveConfigCallback.ignores:

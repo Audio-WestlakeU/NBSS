@@ -1,0 +1,10 @@
+data:
+  class_path: data_loaders.spatialized_wsj0_mix.SpatializedWSJ0MixDataModule
+  init_args:
+    sp_wsj0_dir: ~/datasets/spatialized-wsj0-mix
+    version: min
+    target: reverb
+    sample_rate: 8000
+    num_speakers: 2
+    audio_time_len: [4.0, 4.0, null]
+    batch_size: [2, 1]
