@@ -41,7 +41,7 @@ python SharedTrainer.py fit \
  --model.arch.dim_input=12 \ # input dim per T-F point
  --model.arch.dim_output=4 \ # output dim per T-F point
  --model.arch.num_freqs=129 \
- --trainer.precision=bf16-mixed \ # mixed precision training, can be 16-mixed or 32
+ --trainer.precision=bf16-mixed \ # mixed precision training, can also be 16-mixed or 32
  --model.compile=True \ # compile the network, requires torch>=2.0. the compiled model is trained much faster
  --data.batch_size=[2,4] \ # batch size for train and val
  --trainer.devices=0, \
@@ -71,7 +71,12 @@ python SharedTrainer.py test --config=logs/SpatialNet/version_x/config.yaml \
 
 ## Module Version
 
-see `models/arch/SpatialNet.py` and `models/arch/NBSS.py`.
+| network | file |
+|:---|:---|
+| SpatialNet [4] |models/arch/SpatialNet.py|
+| NB-BLSTM [1] | models/arch/NBSS.py |
+| NBC [2] | models/arch/NBSS.py |
+| NBC2 [3] | models/arch/NBSS.py |
 
 ## Note
-The dataset generation & training commands for the NB-BLSTM/NBC/NBC2 in [1,2,3] are available in `NBSS` branch.
+The dataset generation & training commands for the `NB-BLSTM`/`NBC`/`NBC2` are available in the `NBSS` branch.
