@@ -332,7 +332,7 @@ class TrainCLI(BaseCLI):
 
 if __name__ == '__main__':
     # python SharedTrainer.py --help
-    cli = BaseCLI(
+    cli = TrainCLI(
         TrainModule,
         pl.LightningDataModule,
         save_config_callback=SaveConfigCallback,
