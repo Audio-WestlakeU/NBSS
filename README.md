@@ -1,6 +1,5 @@
 # Multi-channel Speech Separation, Denoising and Dereverberation
 
-A multichannel speech separation method.
 The official repo of:  
 [1] Changsheng Quan, Xiaofei Li. [Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training](https://arxiv.org/abs/2110.05966). In ICASSP 2022.  
 [2] Changsheng Quan, Xiaofei Li. [Multichannel Speech Separation with Narrow-band Conformer](https://arxiv.org/abs/2204.04464). In Interspeech 2022.  
