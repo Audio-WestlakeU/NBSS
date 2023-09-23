@@ -7,3 +7,6 @@ rich
 mir_eval
 soundfile
 pesq
+tensorboard
+pandas
+torcheval==0.0.6
