@@ -164,7 +164,7 @@ def on_load_checkpoint(
         for k, v, in state_dict.items():
             state_dict_new[k.replace('_orig_mod.', '')] = v
         checkpoint['state_dict'] = state_dict_new
-    return self.super().on_load_checkpoint(checkpoint)
+    return super(pl.LightningModule, self).on_load_checkpoint(checkpoint)
 
 
 def on_train_start(self: pl.LightningModule, exp_name: str, model_name: str, num_chns: int, nfft: int, model_class_path: str = None):
