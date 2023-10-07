@@ -38,11 +38,11 @@ class NBSS(nn.Module):
         super().__init__()
 
         if arch == "NB_BLSTM":
-            self.arch: nn.Module = BLSTM2_FC1(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+            self.arch: nn.Module = BLSTM2_FC1(dim_input=n_channel * 2, dim_output=n_speaker * 2, **arch_kwargs)
         elif arch == "NBC":
-            self.arch = NBC(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+            self.arch = NBC(dim_input=n_channel * 2, dim_output=n_speaker * 2, **arch_kwargs)
         elif arch == 'NBC2':
-            self.arch = NBC2(input_size=n_channel * 2, output_size=n_speaker * 2, **arch_kwargs)
+            self.arch = NBC2(dim_input=n_channel * 2, dim_output=n_speaker * 2, **arch_kwargs)
         else:
             raise Exception(f"Unkown arch={arch}")
 
@@ -78,7 +78,7 @@ class NBSS(nn.Module):
 
         # to real
         X = torch.view_as_real(X)  # [B, F, T, C, 2]
-        X = X.reshape(B * F, TF, C * 2)
+        X = X.reshape(B, F, TF, C * 2)
 
         # network processing
         output = self.arch(X)

@@ -44,5 +44,5 @@ model:
   optimizer: [Adam, { lr: 0.001 }]
   lr_scheduler: [ExponentialLR, { gamma: 0.99 }]
   exp_name: exp
-  metrics: [SNR, SDR, SI_SDR, NB_PESQ, WB_PESQ, eSTOI]
+  metrics: [SDR, SI_SDR, NB_PESQ, WB_PESQ, eSTOI]
   val_metric: loss

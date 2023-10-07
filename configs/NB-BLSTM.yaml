@@ -1,0 +1,40 @@
+seed_everything: 2
+trainer:
+  gradient_clip_val: 5
+  gradient_clip_algorithm: norm
+  devices: null
+  accelerator: gpu
+  strategy: ddp_find_unused_parameters_false
+  sync_batchnorm: false
+  precision: 32
+model:
+  arch:
+    class_path: models.arch.blstm2_fc1.BLSTM2_FC1
+    init_args:
+      activation: ""
+      hidden_size:
+        - 256
+        - 128
+      n_repeat_last_lstm: 1
+      dropout: null
+  channels: [0, 1, 2, 3, 4, 5]
+  ref_channel: 0
+  stft:
+    class_path: models.io.stft.STFT
+    init_args:
+      n_fft: 256
+      n_hop: 128
+  loss:
+    class_path: models.io.loss.Loss
+    init_args:
+      loss_func: models.io.loss.neg_si_sdr
+      pit: True
+  norm:
+    class_path: models.io.norm.Norm
+    init_args:
+      mode: frequency
+  optimizer: [Adam, { lr: 0.001 }]
+  lr_scheduler: [ReduceLROnPlateau, { mode: min, factor: 0.5, patience: 10, min_lr: 0.0001 }]
+  exp_name: exp
+  metrics: [SDR, SI_SDR, NB_PESQ, WB_PESQ, eSTOI]
+  val_metric: loss

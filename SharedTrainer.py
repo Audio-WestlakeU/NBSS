@@ -292,7 +292,7 @@ class TrainModule(pl.LightningModule):
             self=self,
             optimizer=self.optimizer[0],
             optimizer_kwargs=self.optimizer[1],
-            monitor='val/loss',
+            monitor='val/' + self.loss.name,
             lr_scheduler=self.lr_scheduler[0] if self.lr_scheduler is not None else None,
             lr_scheduler_kwargs=self.lr_scheduler[1] if self.lr_scheduler is not None else None,
         )

@@ -241,8 +241,8 @@ class NBC(nn.Module):
 
     def __init__(
         self,
-        input_size: int = 16,  # 2*8
-        output_size: int = 4,  # 2*2
+        dim_input: int = 16,  # 2*8
+        dim_output: int = 4,  # 2*2
         n_layers: int = 4,
         encoder_kernel_size: int = 4,
         n_heads: int = 8,
@@ -258,7 +258,7 @@ class NBC(nn.Module):
     ):
         super().__init__()
         # encoder
-        self.encoder = nn.Conv1d(in_channels=input_size, out_channels=hidden_size, kernel_size=encoder_kernel_size, stride=1)
+        self.encoder = nn.Conv1d(in_channels=dim_input, out_channels=hidden_size, kernel_size=encoder_kernel_size, stride=1)
         # self-attention net
         self.sa_layers = nn.ModuleList()
         for l in range(n_layers):
@@ -277,22 +277,25 @@ class NBC(nn.Module):
 
         # decoder
         assert activation == '', 'not implemented'
-        self.decoder = nn.ConvTranspose1d(in_channels=hidden_size, out_channels=output_size, kernel_size=encoder_kernel_size, stride=1)
+        self.decoder = nn.ConvTranspose1d(in_channels=hidden_size, out_channels=dim_output, kernel_size=encoder_kernel_size, stride=1)
 
     def forward(self, x: Tensor) -> Tensor:
-        # x: [Batch, Time, Feature]
+        # x: [Batch, NumFreqs, Time, Feature]
+        B, F, T, H = x.shape
+        x = x.reshape(B * F, T, H)
         x = self.encoder(x.permute(0, 2, 1)).permute(0, 2, 1)
         attns = []
         for m in self.sa_layers:
             x, attn = m(x)
             attns.append(attn)
         y = self.decoder(x.permute(0, 2, 1)).permute(0, 2, 1)
+        y = y.reshape(B, F, T, -1)
         return y.contiguous()  # , attns
 
 
 if __name__ == '__main__':
     Batch, Freq, Time, Chn, Spk = 1, 257, 100, 8, 2
-    x = torch.randn((Batch * Freq, Time, Chn * 2))
-    m = NBC(input_size=Chn * 2, output_size=Spk * 2, n_layers=4)
+    x = torch.randn((Batch, Freq, Time, Chn * 2))
+    m = NBC(dim_input=Chn * 2, dim_output=Spk * 2, n_layers=4)
     y = m(x)
     print(y.shape)

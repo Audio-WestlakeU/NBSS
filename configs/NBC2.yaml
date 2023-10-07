@@ -1,0 +1,50 @@
+seed_everything: 2
+trainer:
+  gradient_clip_val: 5
+  gradient_clip_algorithm: norm
+  devices: null
+  accelerator: gpu
+  strategy: ddp_find_unused_parameters_false
+  sync_batchnorm: false
+  precision: 32
+model:
+  arch:
+    class_path: models.arch.NBC2.NBC2
+    init_args:
+      # dim_input: 12
+      # dim_output: 4
+      n_layers: 8 # 12 for large
+      encoder_kernel_size: 5
+      dim_hidden: 96 # 192 for large
+      dim_ffn: 192 # 384 for large
+      num_freqs: 129
+      block_kwargs:
+        n_heads: 2
+        dropout: 0
+        conv_kernel_size: 3
+        n_conv_groups: 8
+        norms: [LN, GBN, GBN]
+        group_batch_norm_kwargs:
+          # group_size: 129
+          share_along_sequence_dim: false
+  channels: [0, 1, 2, 3, 4, 5]
+  ref_channel: 0
+  stft:
+    class_path: models.io.stft.STFT
+    init_args:
+      n_fft: 256
+      n_hop: 128
+  loss:
+    class_path: models.io.loss.Loss
+    init_args:
+      loss_func: models.io.loss.neg_si_sdr
+      pit: True
+  norm:
+    class_path: models.io.norm.Norm
+    init_args:
+      mode: frequency
+  optimizer: [Adam, { lr: 0.001 }]
+  lr_scheduler: [ExponentialLR, { gamma: 0.99 }]
+  exp_name: exp
+  metrics: [SDR, SI_SDR, NB_PESQ, WB_PESQ, eSTOI]
+  val_metric: loss

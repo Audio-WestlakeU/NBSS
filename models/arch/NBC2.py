@@ -242,12 +242,13 @@ class NBC2(nn.Module):
 
     def __init__(
         self,
-        input_size: int,
-        output_size: int,
+        dim_input: int,
+        dim_output: int,
         n_layers: int,
         encoder_kernel_size: int = 5,
         dim_hidden: int = 192,
         dim_ffn: int = 384,
+        num_freqs: int = 257,
         block_kwargs: Dict[str, Any] = {
             'n_heads': 2,
             'dropout': 0,
@@ -255,14 +256,15 @@ class NBC2(nn.Module):
             'n_conv_groups': 8,
             'norms': ("LN", "GBN", "GBN"),
             'group_batch_norm_kwargs': {
-                'group_size': 257,
                 'share_along_sequence_dim': False,
             },
         },
     ):
         super().__init__()
+        block_kwargs['group_batch_norm_kwargs']['group_size'] = num_freqs
+
         # encoder
-        self.encoder = nn.Conv1d(in_channels=input_size, out_channels=dim_hidden, kernel_size=encoder_kernel_size, stride=1, padding="same")
+        self.encoder = nn.Conv1d(in_channels=dim_input, out_channels=dim_hidden, kernel_size=encoder_kernel_size, stride=1, padding="same")
 
         # self-attention net
         self.sa_layers = nn.ModuleList()
@@ -270,10 +272,12 @@ class NBC2(nn.Module):
             self.sa_layers.append(NBC2Block(dim_hidden=dim_hidden, dim_ffn=dim_ffn, **block_kwargs))
 
         # decoder
-        self.decoder = nn.Linear(in_features=dim_hidden, out_features=output_size)
+        self.decoder = nn.Linear(in_features=dim_hidden, out_features=dim_output)
 
     def forward(self, x: Tensor) -> Tensor:
-        # x: [Batch, Time, Feature]
+        # x: [Batch, NumFreqs, Time, Feature]
+        B, F, T, H = x.shape
+        x = x.reshape(B * F, T, H)
         x = self.encoder(x.permute(0, 2, 1)).permute(0, 2, 1)
         # attns = []
         for m in self.sa_layers:
@@ -281,14 +285,15 @@ class NBC2(nn.Module):
             del attn
             # attns.append(attn)
         y = self.decoder(x)
+        y = y.reshape(B, F, T, -1)
         return y.contiguous()  # , attns
 
 
 if __name__ == '__main__':
-    x = torch.randn((5 * 257, 100, 16))
+    x = torch.randn((5, 257, 100, 16))
     NBC2_small = NBC2(
-        input_size=16,
-        output_size=4,
+        dim_input=16,
+        dim_output=4,
         n_layers=8,
         dim_hidden=96,
         dim_ffn=192,
@@ -308,8 +313,8 @@ if __name__ == '__main__':
     print(NBC2_small)
     print(y.shape)
     NBC2_large = NBC2(
-        input_size=16,
-        output_size=4,
+        dim_input=16,
+        dim_output=4,
         n_layers=12,
         dim_hidden=192,
         dim_ffn=384,

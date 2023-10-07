@@ -7,8 +7,8 @@ class BLSTM2_FC1(nn.Module):
 
     def __init__(
             self,
-            input_size: int,
-            output_size: int,
+            dim_input: int,
+            dim_output: int,
             activation: Optional[str] = "",
             hidden_size: Tuple[int, int] = (256, 128),
             n_repeat_last_lstm: int = 1,
@@ -24,8 +24,8 @@ class BLSTM2_FC1(nn.Module):
 
         super().__init__()
 
-        self.input_size = input_size
-        self.output_size = output_size
+        self.input_size = dim_input
+        self.output_size = dim_output
         self.hidden_size = hidden_size
         self.activation = activation
         self.dropout = dropout
@@ -46,11 +46,14 @@ class BLSTM2_FC1(nn.Module):
         """forward
 
         Args:
-            x: shape [batch, seq, input_size]
+            x: shape [batch, num_freqs, seq, input_size]
 
         Returns:
-            Tensor: shape [batch, seq, output_size]
+            Tensor: shape [batch, num_freqs, seq, output_size]
         """
+        # x: [Batch, NumFreqs, Time, Feature]
+        B, F, T, H = x.shape
+        x = x.reshape(B * F, T, H)
         x, _ = self.blstm1(x)
         if self.dropout:
             x = self.dropout1(x)
@@ -62,4 +65,5 @@ class BLSTM2_FC1(nn.Module):
         else:
             y = self.linear(x)
 
+        y = y.reshape(B, F, T, -1)
         return y
