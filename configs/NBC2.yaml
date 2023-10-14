@@ -4,7 +4,7 @@ trainer:
   gradient_clip_algorithm: norm
   devices: null
   accelerator: gpu
-  strategy: ddp_find_unused_parameters_false
+  strategy: auto
   sync_batchnorm: false
   precision: 32
 model:
