@@ -253,7 +253,7 @@ def test_setp_write_example(self, xr: Tensor, yr: Tensor, yr_hat: Tensor, sample
     example_dir = os.path.join(exp_save_path, 'examples', str(paras[0]['index']))
     os.makedirs(example_dir, exist_ok=True)
     # save preds and targets for each speaker
-    for i in range(range(yr.shape[1])):
+    for i in range(yr.shape[1]):
         # write ys
         wav_path = os.path.join(example_dir, pattern.format(name=f"_spk{i+1}.wav"))
         write_wav(wav_path=wav_path, wav=yr[0, i])
