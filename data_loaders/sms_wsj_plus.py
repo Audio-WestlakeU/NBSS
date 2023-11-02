@@ -140,7 +140,7 @@ class SmsWsjPlusDataset(Dataset):
         if self.target == 'direct_path':  # read simulated direct-path rir
             rir_target = rir_dict['rir_dp']  # shape [nsrc,nmic,time]
             rir_target = rir_target[spk_rir_idxs, :, :]
-        elif self.target == 'rvbt_image':  # rvbt_image
+        elif self.target == 'revb_image':  # revb_image
             rir_target = rir  # shape [nsrc,nmic,time]
         elif self.target.startswith('RTS'):  # e.g. RTS_0.1s
             rts_time = float(self.target.replace('RTS_', '').replace('s', ''))
