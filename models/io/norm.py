@@ -37,7 +37,7 @@ class Norm(nn.Module):
                 XrMM = torch.abs(Xr).mean(dim=2, keepdim=True) + 1e-8  # Xr_magnitude_mean, [B,1,F,1]
             else:
                 assert self.mode == 'utterance', self.mode
-                XrMM = torch.abs(Xr).mean(dim=(1, 2), keepdim=True) + 1e-8  # Xr_magnitude_mean, [B,1,1,1]
+                XrMM = torch.abs(Xr).mean(dim=(2, 3), keepdim=True) + 1e-8  # Xr_magnitude_mean, [B,1,1,1]
         else:
             Xr, XrMM = norm_paras
         X[:, :, :, :] /= XrMM
