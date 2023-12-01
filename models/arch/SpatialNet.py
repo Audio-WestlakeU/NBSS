@@ -247,8 +247,15 @@ if __name__ == '__main__':
     print(y.shape)
     print(te - ts)
 
-    from torcheval.tools.module_summary import get_module_summary
-    ms = get_module_summary(spatialnet_small, module_args=(x,))
-    flops_forward_eval, flops_back_eval = ms.flops_forward, ms.flops_backward
-    params_eval = ms.num_parameters
-    print(f"flops_forward={flops_forward_eval/1e9:.2f}G, flops_back={flops_back_eval/1e9:.2f}G, params={params_eval/1e6:.2f} M")
+    spatialnet_small = spatialnet_small.to('meta')
+    x = x.to('meta')
+    from torch.utils.flop_counter import FlopCounterMode # requires torch>=2.1.0
+    with FlopCounterMode(spatialnet_small, display=False) as fcm:
+        y = spatialnet_small(x)
+        flops_forward_eval = fcm.get_total_flops()
+        res = y.sum()
+        res.backward()
+        flops_backward_eval = fcm.get_total_flops() - flops_forward_eval
+
+    params_eval = sum(param.numel() for param in spatialnet_small.parameters())
+    print(f"flops_forward={flops_forward_eval/1e9:.2f}G, flops_back={flops_backward_eval/1e9:.2f}G, params={params_eval/1e6:.2f} M")

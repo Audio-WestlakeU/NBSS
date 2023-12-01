@@ -95,7 +95,7 @@ class TrainModule(pl.LightningModule):
         """Called by PytorchLightning automatically at the start of training"""
         GS.on_train_start(self=self, exp_name=self.exp_name, model_name=self.name, num_chns=max(self.channels) + 1, nfft=self.stft.n_fft, model_class_path=self.import_path)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, istft: bool = True) -> Tensor:
         """
         Args:
             x: [B,C,T]
@@ -118,7 +118,7 @@ class TrainModule(pl.LightningModule):
 
         # to time domain
         Yr_hat = self.norm.inorm(out, norm_paras)
-        yr_hat = self.stft.istft(Yr_hat, stft_paras)
+        yr_hat = self.stft.istft(Yr_hat, stft_paras) if istft else torch.view_as_real(Yr_hat)
         return yr_hat
 
     def training_step(self, batch, batch_idx):
