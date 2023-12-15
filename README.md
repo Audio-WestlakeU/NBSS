@@ -23,6 +23,7 @@ Generate rirs for the dataset `SMS-WSJ_plus` used in `SpatialNet` ablation exper
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python generate_rirs.py --rir_dir ~/datasets/SMS_WSJ_Plus_rirs --save_to configs/datasets/sms_wsj_rir_cfg.npz
+cp configs/datasets/sms_wsj_plus_diffuse.npz ~/datasets/SMS_WSJ_Plus_rirs/diffuse.npz # copy diffuse parameters
 ```
 
 For SMS-WSJ, please see https://github.com/fgnt/sms_wsj

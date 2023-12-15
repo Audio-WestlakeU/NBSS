@@ -99,8 +99,17 @@ class SmsWsjPlusDataset(Dataset):
         self.rir_dir = Path(rir_dir).expanduser() / {"train_si284": "train", "cv_dev93": 'validation', 'test_eval92': 'test'}[dataset]
         self.rirs = [str(r) for r in list(Path(self.rir_dir).expanduser().rglob('*.npz'))]
         self.rirs.sort()
-        pos_mics = np.load(self.rirs[0], allow_pickle=True)['pos_rcv']
-        _, self.Cs = gen_desired_spatial_coherence(pos_mics=pos_mics, fs=self.sample_rate, noise_field='spherical', c=343, nfft=256)
+        # load & save diffuse parameters
+        diffuse_paras_path = (Path(rir_dir) / 'diffuse.npz').expanduser()
+        if diffuse_paras_path.exists():
+            self.Cs = np.load(diffuse_paras_path, allow_pickle=True)['Cs']
+        else:
+            pos_mics = np.load(self.rirs[0], allow_pickle=True)['pos_rcv']
+            _, self.Cs = gen_desired_spatial_coherence(pos_mics=pos_mics, fs=self.sample_rate, noise_field='spherical', c=343, nfft=256)
+            try:
+                np.savez(diffuse_paras_path, Cs=self.Cs)
+            except:
+                ...
         assert len(self.rirs) > 0, f"{str(self.rir_dir)} is empty or not exists"
         self.shuffle_rir = True if dataset == "train_si284" else False
 
