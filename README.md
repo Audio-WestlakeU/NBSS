@@ -38,7 +38,8 @@ This project is built on the `pytorch-lightning` package, in particular its [com
 python SharedTrainer.py fit \
  --config=configs/SpatialNet.yaml \ # network config
  --config=configs/datasets/sms_wsj_plus.yaml \ # dataset config
- --model.arch.dim_input=12 \ # input dim per T-F point
+ --model.channels=[0,1,2,3,4,5] \ # the channels used
+ --model.arch.dim_input=12 \ # input dim per T-F point, i.e. 2 * the number of channels
  --model.arch.dim_output=4 \ # output dim per T-F point
  --model.arch.num_freqs=129 \
  --trainer.precision=bf16-mixed \ # mixed precision training, can also be 16-mixed or 32
