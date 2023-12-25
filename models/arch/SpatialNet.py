@@ -94,7 +94,8 @@ class SpatialNetLayer(nn.Module):
         B, F, T, H = x.shape
         x = self.norm_mhsa(x)
         x = x.reshape(B * F, T, H)
-        x, attn = self.mhsa.forward(x, x, x, average_attn_weights=False, attn_mask=attn_mask)
+        need_weights = False if hasattr(self, "need_weights") else self.need_weights
+        x, attn = self.mhsa.forward(x, x, x, need_weights=need_weights, average_attn_weights=False, attn_mask=attn_mask)
         x = x.reshape(B, F, T, H)
         return self.dropout_mhsa(x), attn
 
@@ -207,6 +208,7 @@ class SpatialNet(nn.Module):
         attns = [] if return_attn_score else None
         x = x.reshape(B, F, T, H)
         for m in self.layers:
+            setattr(m, "need_weights", return_attn_score)
             x, attn = m(x)
             if return_attn_score:
                 attns.append(attn)
@@ -220,7 +222,7 @@ class SpatialNet(nn.Module):
 
 if __name__ == '__main__':
     # CUDA_VISIBLE_DEVICES=7, python -m models.arch.SpatialNet
-    x = torch.randn((1, 129, 250, 12))  #.cuda()
+    x = torch.randn((1, 129, 251, 12))  #.cuda() # 251 = 4 second; 129 = 8 kHz; 257 = 16 kHz
     spatialnet_small = SpatialNet(
         dim_input=12,
         dim_output=4,
@@ -230,7 +232,7 @@ if __name__ == '__main__':
         kernel_size=(5, 3),
         conv_groups=(8, 8),
         norms=("LN", "LN", "GN", "LN", "LN", "LN"),
-        dim_squeeze=4,
+        dim_squeeze=8,
         num_freqs=129,
         full_share=0,
     )  #.cuda()
