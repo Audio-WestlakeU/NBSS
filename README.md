@@ -1,4 +1,4 @@
-# Multi-channel Speech Separation, Denoising and Dereverberation
+# Multichannel Speech Separation, Denoising and Dereverberation
 
 The official repo of:  
 [1] Changsheng Quan, Xiaofei Li. [Multi-channel Narrow-band Deep Speech Separation with Full-band Permutation Invariant Training](https://arxiv.org/abs/2110.05966). In ICASSP 2022.  
