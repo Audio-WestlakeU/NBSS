@@ -55,7 +55,7 @@ python SharedTrainer.py fit \
  --model.compile=true \ # compile the network, requires torch>=2.0. the compiled model is trained much faster
  --data.batch_size=[2,4] \ # batch size for train and val
  --trainer.devices=0, \
- --trainer.max_epochs=100
+ --trainer.max_epochs=100 # better performance may be obtained if more epochs are given
 ```
 
 More gpus can be used by appending the gpu indexes to `trainer.devices`, e.g. `--trainer.devices=0,1,2,3,`.
