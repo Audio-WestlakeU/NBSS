@@ -83,9 +83,7 @@ python SharedTrainer.py test --config=logs/SpatialNet/version_x/config.yaml \
 
 | network | file |
 |:---|:---|
-| NB-BLSTM [1] | models/arch/NBSS.py |
-| NBC [2] | models/arch/NBSS.py |
-| NBC2 [3] | models/arch/NBSS.py |
+| NB-BLSTM [1] / NBC [2] / NBC2 [3] | models/arch/NBSS.py |
 | SpatialNet [4] |models/arch/SpatialNet.py|
 | online SpatialNet [5] | coming soon |
 
