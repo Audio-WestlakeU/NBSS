@@ -1,0 +1,11 @@
+data:
+  class_path: data_loaders.chime3_moving.CHiME3MovingDataModule
+  init_args:
+    wsj0_dir: ~/datasets/wsj0
+    rir_dir: ~/datasets/CHiME3_moving_rirs
+    chime3_dir: ~/datasets/CHiME3
+    target: direct_path
+    datasets: ["train", "val", "test", "test"]
+    audio_time_len: [4.0, 32.0, 32.0, 32.0]
+    snr: [-5, 10]
+    batch_size: [4, 8]

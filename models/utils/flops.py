@@ -26,8 +26,7 @@ def measure_flops(
     """Utility to compute the total number of FLOPs used by a module during training or during inference.
 
     It's recommended to create a meta-device model for this, because:
-    1) the flops of LSTM cannot be measured if the model is not a meta-device model;
-    but meta-device model seems is not compatible with torch.istft
+    1) the flops of LSTM cannot be measured if the model is not a meta-device model:
 
     Example::
 
@@ -92,13 +91,13 @@ def _get_num_params(model: torch.nn.Module):
 
 def _test_FLOPs(model: LightningModule, save_dir: str, num_chns: int, fs: int, audio_time_len: int = 4, num_params: int = None):
     if _TORCH_GREATER_EQUAL_2_1:
-        x = torch.randn(1, num_chns, int(fs * audio_time_len), dtype=torch.float32).to('meta')  # accurate FLOPs estimation of LSTM requires meta tensor & model
-        model = model.to('meta')  # accurate FLOPs estimation of LSTM requires meta tensor & model
+        x = torch.randn(1, num_chns, int(fs * audio_time_len), dtype=torch.float32).to('meta')
+        model = model.to('meta')
 
         model_fwd = lambda: model(x, istft=False)
         fwd_flops = measure_flops(model, model_fwd, total=False)
 
-        model_loss = lambda y: y.sum()
+        model_loss = lambda y: y[0].sum()
         fwd_and_bwd_flops = measure_flops(model, model_fwd, model_loss)
 
         with open(os.path.join(save_dir, 'FLOPs-detailed.txt'), 'w') as f:
@@ -139,12 +138,16 @@ def _test_FLOPs(model: LightningModule, save_dir: str, num_chns: int, fs: int, a
             print(f"FLOPs test failed '{repr(e)}', see {exp_file}")
 
     params_eval = num_params if num_params is not None else _get_num_params(module)
-    print(f"FLOPs: forward={flops_forward_eval/1e9:.2f} G, back={flops_backward_eval/1e9:.2f} G, detailed: {os.path.join(save_dir, 'FLOPs-detailed.txt')}")
+    flops_forward_eval_avg = flops_forward_eval / audio_time_len
+    print(
+        f"FLOPs: forward={flops_forward_eval/1e9:.2f} G, {flops_forward_eval_avg/1e9:.2f} G/s, back={flops_backward_eval/1e9:.2f} G, params: {params_eval/1e6:.3f} M, detailed: {os.path.join(save_dir, 'FLOPs-detailed.txt')}"
+    )
 
     with open(os.path.join(save_dir, 'FLOPs.yaml'), 'w') as f:
         yaml.dump(
             {
                 "flops_forward" if _TORCH_GREATER_EQUAL_2_1 else "macs_forward": f"{flops_forward_eval/1e9:.2f} G",
+                "flops_forward_avg" if _TORCH_GREATER_EQUAL_2_1 else "macs_forward_avg": f"{flops_forward_eval_avg/1e9:.2f} G/s",
                 "flops_backward" if _TORCH_GREATER_EQUAL_2_1 else "macs_backward": f"{flops_backward_eval/1e9:.2f} G",
                 "params": f"{params_eval/1e6:.3f} M",
                 "fs": fs,
@@ -231,7 +234,7 @@ if __name__ == '__main__':
         if args.nfft is None:
             print('MACs test error: you should specify the fs or nfft')
             exit(-1)
-        fs = {256: 8000, 512: 16000}[args.nfft]
+        fs = {256: 8000, 512: 16000, 320: 16000, 160: 8000}[args.nfft]
 
     _test_FLOPs_from_config(
         save_dir=args.save_dir,

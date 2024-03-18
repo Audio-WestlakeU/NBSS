@@ -16,7 +16,7 @@ from torchmetrics.functional.audio import \
     scale_invariant_signal_distortion_ratio as si_sdr
 from torchmetrics.functional.audio import signal_distortion_ratio as sdr
 from pytorch_lightning.cli import LightningArgumentParser
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 import models.utils.general_steps as GS
 from models.io.loss import *
@@ -25,6 +25,7 @@ from models.io.stft import STFT
 from models.utils.metrics import (cal_metrics_functional, recover_scale)
 from models.utils.base_cli import BaseCLI
 from models.utils.my_save_config_callback import MySaveConfigCallback as SaveConfigCallback
+from models.utils.my_earlystopping import MyEarlyStopping as EarlyStopping
 import data_loaders
 
 
@@ -52,17 +53,20 @@ class TrainModule(pl.LightningModule):
             'min_lr': 1e-4
         }),
         metrics: List[str] = ['SDR', 'SI_SDR', 'NB_PESQ', 'WB_PESQ', 'eSTOI'],
+        mchunk: Optional[Tuple[float, float]] = None,  # chunk for cal_metrics_functional
         val_metric: str = 'loss',
         write_examples: int = 200,
         ensemble: Union[int, str, List[str], Literal[None]] = None,
         compile: bool = False,
         exp_name: str = "exp",
+        reset: Optional[List[str]] = None,
     ):
         """
         Args:
             exp_name: set exp_name to notag when debug things. Defaults to "exp".
             metrics: metrics used at test time. Defaults to ['SNR', 'SDR', 'SI_SDR', 'NB_PESQ', 'WB_PESQ'].
             write_examples: write how many examples at test.
+            reset: reset the items in checkpoint when loading e.g. ['optimizer', 'lr_scheduler'].
         """
 
         super().__init__()
@@ -70,8 +74,8 @@ class TrainModule(pl.LightningModule):
         args = locals().copy()  # capture the parameters passed to this function or their edited values
 
         if compile != False:
-            assert Version(torch.__version__) >= Version('2.0.0'), f'compile only works for torch>=2.0: current version: {torch.__version__}'
-            self.arch = torch.compile(arch)
+            assert Version(torch.__version__) >= Version('2.0.0'), torch.__version__
+            self.arch = torch.compile(arch, dynamic=Version(torch.__version__) >= Version('2.1.0'))
         else:
             self.arch = arch
 
@@ -80,10 +84,12 @@ class TrainModule(pl.LightningModule):
         self.stft = stft
         self.norm = norm
         self.loss = loss
+        self.compile_model = compile
 
         self.val_cpu_metric_input = []
         self.norm_if_exceed_1 = True
         self.name = type(arch).__name__
+        self.reset = reset
 
         # save other parameters to `self`
         for k, v in args.items():
@@ -95,18 +101,18 @@ class TrainModule(pl.LightningModule):
         """Called by PytorchLightning automatically at the start of training"""
         GS.on_train_start(self=self, exp_name=self.exp_name, model_name=self.name, num_chns=max(self.channels) + 1, nfft=self.stft.n_fft, model_class_path=self.import_path)
 
-    def forward(self, x: Tensor, istft: bool = True) -> Tensor:
+    def forward(self, x: Tensor, istft: bool = True) -> Tuple[Tensor, Any]:
         """
         Args:
             x: [B,C,T]
 
         Returns:
-            Tuple[Tensor, Tensor]: ys_hat
+            Tuple[Tensor, Any]: ys_hat, loss_paras
         """
         # obtain STFT X
         X, stft_paras = self.stft.stft(x[:, self.channels])  # [B,C,F,T], complex
         B, C, F, T = X.shape
-        X, norm_paras = self.norm.norm(X, ref_channel=self.channels.index(self.ref_channel))
+        X, (Xr, XrMM) = self.norm.norm(X, ref_channel=self.channels.index(self.ref_channel))
         X = X.permute(0, 2, 3, 1)  # B,F,T,C; complex
         X = torch.view_as_real(X).reshape(B, F, T, -1)  # B,F,T,2C
 
@@ -116,24 +122,28 @@ class TrainModule(pl.LightningModule):
             out = torch.view_as_complex(out.float().reshape(B, F, T, -1, 2))  # [B,F,T,Spk]
         out = out.permute(0, 3, 1, 2)  # [B,Spk,F,T]
 
+        # to STFT domain CC
+        Yr_hat, loss_paras = self.loss.to_CC(out=out, Xr=Xr, XrMM=XrMM, stft=self.stft)
+        if self.loss.mask is None:  # for mask-based methods, no need to conduct inverse norm as they are estimating targets based on Xr which is not normalized
+            Yr_hat = self.norm.inorm(out, (Xr, XrMM))
+
         # to time domain
-        Yr_hat = self.norm.inorm(out, norm_paras)
         yr_hat = self.stft.istft(Yr_hat, stft_paras) if istft else torch.view_as_real(Yr_hat)
-        return yr_hat
+        return yr_hat, loss_paras
 
     def training_step(self, batch, batch_idx):
         """training step on self.device, called automaticly by PytorchLightning"""
         x, ys, paras = batch  # x: [B,C,T], ys: [B,Spk,C,T]
         yr = ys[:, :, self.ref_channel, :]
 
-        yr_hat = self.forward(x)
+        yr_hat, loss_paras = self.forward(x)
 
         # float32 loss calculation
         if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
             with torch.autocast(device_type=self.device.type, dtype=torch.float32):
-                loss, perms, yr_hat = self.loss(preds=yr_hat, target=yr, reorder=False, reduce_batch=True)  # convert to float32 to avoid numerical problem in loss calculation
+                loss, perms, yr_hat = self.loss(yr_hat=yr_hat, yr=yr, reorder=False, reduce_batch=True, **loss_paras)  # convert to float32 to avoid numerical problem in loss calculation
         else:
-            loss, perms, yr_hat = self.loss(preds=yr_hat, target=yr, reorder=False, reduce_batch=True)
+            loss, perms, yr_hat = self.loss(yr_hat=yr_hat, yr=yr, reorder=False, reduce_batch=True, **loss_paras)
 
         self.log('train/' + self.loss.name, loss, batch_size=ys[0].shape[0], prog_bar=True)
         return loss
@@ -150,8 +160,8 @@ class TrainModule(pl.LightningModule):
             autocast.__enter__()
 
         # forward & loss
-        yr_hat = self.forward(x)
-        loss, perms, yr_hat = self.loss(preds=yr_hat, target=yr, reorder=True, reduce_batch=True)
+        yr_hat, loss_paras = self.forward(x)
+        loss, perms, yr_hat = self.loss(yr_hat=yr_hat, yr=yr, reorder=True, reduce_batch=True, **loss_paras)
 
         # metrics
         sdr_val = sdr(yr_hat, yr).mean()
@@ -183,6 +193,19 @@ class TrainModule(pl.LightningModule):
         ]]
         self.val_cpu_metric_input += yrs
 
+        # compute si-sdr chunkwise
+        if self.mchunk is not None:
+            B, Spk, T = yr.shape
+            chunklen = int(self.mchunk[0] * sample_rate)
+            n_chk = yr.shape[-1] // chunklen
+            if n_chk == 1:
+                return
+            yrc = yr[..., :n_chk * chunklen].reshape(B, Spk, n_chk, chunklen)
+            yrhc = yr_hat[..., :n_chk * chunklen].reshape(B, Spk, n_chk, chunklen)
+            si_sdr_val = si_sdr(preds=yrhc, target=yrc).reshape(B * Spk, n_chk).mean(dim=0)
+            for i in range(n_chk):
+                self.log(f'val/si_sdr_{i*self.mchunk[0]+1}s-{(i+1)*self.mchunk[0]}s', si_sdr_val[i], sync_dist=True, batch_size=ys.shape[0])
+
     def on_validation_epoch_end(self) -> None:
         """calculate heavy metrics for every N epochs"""
         GS.on_validation_epoch_end(self=self, cpu_metric_input=self.val_cpu_metric_input, N=5)
@@ -205,8 +228,8 @@ class TrainModule(pl.LightningModule):
             autocast = torch.autocast(device_type=self.device.type, dtype=torch.float32)
             autocast.__enter__()
 
-        yr_hat = self.forward(x)
-        loss, perms, yr_hat = self.loss(preds=yr_hat, target=yr, reorder=True, reduce_batch=True)
+        yr_hat, loss_paras = self.forward(x)
+        loss, perms, yr_hat = self.loss(yr_hat=yr_hat, yr=yr, reorder=True, reduce_batch=True, **loss_paras)
         self.log('test/' + self.loss.name, loss, logger=False, batch_size=ys.shape[0])
 
         # write results & infos
@@ -214,16 +237,16 @@ class TrainModule(pl.LightningModule):
         result_dict = {'id': batch_idx, 'wavname': wavname, self.loss.name: loss.item()}
 
         # recover wav's original scale. solve min ||Y^T a - X||F to obtain the scales of the predictions of speakers, cuz sisdr will lose scale
+        x_ref = x[:, self.ref_channel, :]
         if self.loss.is_scale_invariant_loss:
-            x_ref = x[:, self.ref_channel, :]
             yr_hat = recover_scale(preds=yr_hat, mixture=x_ref, scale_src_together=True if self.loss.loss_func == neg_sa_sdr else False, norm_if_exceed_1=False)
 
         # calculate metrics, input_metrics, improve_metrics on GPU
-        metrics, input_metrics, imp_metrics = cal_metrics_functional(self.metrics, yr_hat[0], yr[0], x_ref.expand_as(yr[0]), sample_rate, device_only='gpu')
+        metrics, input_metrics, imp_metrics = cal_metrics_functional(self.metrics, yr_hat[0], yr[0], x_ref.expand_as(yr[0]), sample_rate, device_only='gpu', chunk=self.mchunk)
         result_dict.update(input_metrics)
         result_dict.update(imp_metrics)
         result_dict.update(metrics)
-        self.cpu_metric_input.append((self.metrics, yr_hat[0].detach().cpu(), yr[0].detach().cpu(), x_ref.expand_as(yr[0]).detach().cpu(), sample_rate, 'cpu'))
+        self.cpu_metric_input.append((self.metrics, yr_hat[0].detach().cpu(), yr[0].detach().cpu(), x_ref.expand_as(yr[0]).detach().cpu(), sample_rate, 'cpu', self.mchunk))
 
         # write examples
         if self.write_examples < 0 or paras[0]['index'] < self.write_examples:
@@ -265,7 +288,7 @@ class TrainModule(pl.LightningModule):
             yr = ys[:, :, self.ref_channel, :] if ys[0] is not None else None
 
         # forward & loss
-        yr_hat = self.forward(x)
+        yr_hat, loss_paras = self.forward(x)
 
         if self.loss.is_scale_invariant_loss:
             x_ref = x[:, self.ref_channel, :]
@@ -292,27 +315,45 @@ class TrainModule(pl.LightningModule):
             self=self,
             optimizer=self.optimizer[0],
             optimizer_kwargs=self.optimizer[1],
-            monitor='val/' + self.loss.name,
+            monitor='val/metric',
             lr_scheduler=self.lr_scheduler[0] if self.lr_scheduler is not None else None,
             lr_scheduler_kwargs=self.lr_scheduler[1] if self.lr_scheduler is not None else None,
         )
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        GS.on_load_checkpoint(self=self, checkpoint=checkpoint, ensemble_opts=self.ensemble, compile=self.compile)
+        GS.on_load_checkpoint(self=self, checkpoint=checkpoint, ensemble_opts=self.ensemble, compile=self.compile_model, reset=self.reset)
+
+    # def on_before_optimizer_step(self, optimizer):
+    #     from pytorch_lightning.utilities import grad_norm
+    #     # Compute the 2-norm for each layer
+    #     # If using mixed precision, the gradients are already unscaled here
+    #     norms = grad_norm(self.arch, norm_type=2)
+    #     self.log_dict(norms, on_step=True)
+
+    def on_after_backward(self) -> None:
+        super().on_after_backward()
+        if self.current_epoch != 0:
+            return
+        # This function is useful for debuging the following error:
+        # RuntimeError: It looks like your LightningModule has parameters that were not used in producing the loss returned by training_step.
+        for name, p in self.named_parameters():
+            if p.grad is None:
+                print('unused parameter (check code or freeze it):', name)
 
 
 class TrainCLI(BaseCLI):
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser) -> None:
         # # EarlyStopping
-        # parser.add_lightning_class_args(EarlyStopping, "early_stopping")
-        # early_stopping_defaults = {
-        #     "early_stopping.monitor": "val/metric",
-        #     "early_stopping.patience": 30,
-        #     "early_stopping.mode": "max",
-        #     "early_stopping.min_delta": 0.1,
-        # }
-        # parser.set_defaults(early_stopping_defaults)
+        parser.add_lightning_class_args(EarlyStopping, "early_stopping")
+        early_stopping_defaults = {
+            "early_stopping.enable": False,
+            "early_stopping.monitor": "val/metric",
+            "early_stopping.patience": 10,
+            "early_stopping.mode": "max",
+            "early_stopping.min_delta": 0.1,
+        }
+        parser.set_defaults(early_stopping_defaults)
 
         # ModelCheckpoint
         parser.add_lightning_class_args(ModelCheckpoint, "model_checkpoint")

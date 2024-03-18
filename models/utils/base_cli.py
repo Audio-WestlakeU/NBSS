@@ -4,11 +4,16 @@ Basic Command Line Interface, provides command line controls for training, test,
 
 import os
 
-os.environ["OMP_NUM_THREADS"] = str(8)  # limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
+os.environ["OMP_NUM_THREADS"] = str(2)  # limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
+os.environ['OPENBLAS_NUM_THREADS'] = '2'
+os.environ["MKL_NUM_THREADS"] = str(2)
 
 from typing import *
 
 import torch
+if torch.multiprocessing.get_start_method() != 'spawn':
+    torch.multiprocessing.set_start_method('spawn', force=True)  # fix stoi stuck
+
 from models.utils import MyRichProgressBar as RichProgressBar
 # from pytorch_lightning.loggers import TensorBoardLogger
 from models.utils.my_logger import MyLogger as TensorBoardLogger
@@ -18,6 +23,10 @@ from pytorch_lightning.cli import LightningArgumentParser, LightningCLI
 
 torch.backends.cuda.matmul.allow_tf32 = True  # The flag below controls whether to allow TF32 on matmul. This flag defaults to False in PyTorch 1.12 and later.
 torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
+from packaging.version import Version
+if Version(torch.__version__) >= Version('2.0.0'):
+    torch._dynamo.config.optimize_ddp = False  # fix this issue: https://github.com/pytorch/pytorch/issues/111279#issuecomment-1870641439
+    torch._dynamo.config.cache_size_limit = 64
 
 
 class BaseCLI(LightningCLI):

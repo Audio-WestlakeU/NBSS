@@ -1,0 +1,59 @@
+seed_everything: 2
+trainer:
+  gradient_clip_val: 1
+  gradient_clip_algorithm: norm
+  devices: null
+  accelerator: gpu
+  strategy: auto
+  sync_batchnorm: false
+  precision: 32
+model:
+  arch:
+    class_path: models.arch.OnlineSpatialNet.OnlineSpatialNet
+    init_args:
+      # dim_input: 16
+      # dim_output: 4
+      num_layers: 8
+      encoder_kernel_size: 5
+      dim_hidden: 96
+      dim_ffn: 192
+      num_heads: 4
+      dropout: [0, 0, 0]
+      kernel_size: [5, 3]
+      conv_groups: [8, 8]
+      norms: ["LN", "LN", "GN", "LN", "LN", "LN"]
+      dim_squeeze: 8
+      # num_freqs: 257
+      full_share: 0 # set to 9999 to not share the full-band module, which will increase the model performance with the cost of larger parameter size.
+      attention: mamba(16,4) # mhsa(251)/ret(2)/mamba(16,4)
+      decay: [4, 5, 9, 10]
+      rope: false
+  channels: [0, 1, 2, 3, 4, 5]
+  ref_channel: 0
+  stft:
+    class_path: models.io.stft.STFT
+    init_args: {} # by default set to {} to avoid using wrong stft config
+      # n_fft: 256
+      # n_hop: 128
+  loss:
+    class_path: models.io.loss.Loss
+    init_args:
+      loss_func: models.io.loss.neg_snr
+      pit: true
+  norm:
+    class_path: models.io.norm.Norm
+    init_args:
+      mode: utterance
+      online: true
+  optimizer: [Adam, { lr: 0.001 }]
+  lr_scheduler: [ExponentialLR, { gamma: 0.99 }]
+  # lr_scheduler: [ReduceLROnPlateau, {mode: max, factor: 0.5, patience: 5, min_lr: 0.0001}]
+  exp_name: exp
+  metrics: [SNR, SDR, SI_SDR, NB_PESQ, WB_PESQ, eSTOI]
+  val_metric: loss
+early_stopping:
+  enable: false
+  monitor: val/metric
+  patience: 10
+  mode: max
+  min_delta: 0.1

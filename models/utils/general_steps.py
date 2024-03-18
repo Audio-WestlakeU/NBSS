@@ -7,7 +7,7 @@ import soundfile as sf
 import torch
 from numpy import ndarray
 from pandas import DataFrame
-from pytorch_lightning.utilities.rank_zero import rank_zero_info
+from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_warn
 from torch import Tensor
 
 from models.utils import MyJsonEncoder, tag_and_log_git_status
@@ -142,6 +142,7 @@ def on_load_checkpoint(
     checkpoint: Dict[str, Any],
     ensemble_opts: Union[int, str, List[str], Literal[None]] = None,
     compile: bool = True,
+    reset: List[str] = [],
 ) -> None:
     """load checkpoint
 
@@ -151,6 +152,11 @@ def on_load_checkpoint(
         ensemble_opts: opts for ensemble. Defaults to None.
         compile: whether the checkpoint is a compiled one. Defaults to True.
     """
+    from pytorch_lightning.strategies import FSDPStrategy
+    if isinstance(self.trainer.strategy, FSDPStrategy):
+        rank_zero_warn('using fsdp, ensemble is disenabled')
+        return super(pl.LightningModule, self).on_load_checkpoint(checkpoint)
+
     if ensemble_opts:
         ckpt = self.trainer.ckpt_path
         ckpts, state_dict = ensemble(opts=ensemble_opts, ckpt=ckpt)
@@ -164,6 +170,19 @@ def on_load_checkpoint(
         for k, v, in state_dict.items():
             state_dict_new[k.replace('_orig_mod.', '')] = v
         checkpoint['state_dict'] = state_dict_new
+
+    if reset is not None:
+        for key in reset:
+            assert key in ['optimizer', 'lr_scheduler'], f'unsupported reset key {key}'
+            if key == 'optimizer':
+                checkpoint['optimizer'] = dict()
+                checkpoint['optimizer_states'] = []
+                rank_zero_info('reset optimizer')
+            elif key == 'lr_scheduler':
+                checkpoint['lr_scheduler'] = dict()
+                checkpoint['lr_schedulers'] = []
+                rank_zero_info('reset lr_scheduler')
+
     return super(pl.LightningModule, self).on_load_checkpoint(checkpoint)
 
 

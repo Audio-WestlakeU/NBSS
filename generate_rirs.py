@@ -1,7 +1,7 @@
 import os
 
 os.environ["OMP_NUM_THREADS"] = str(1)  # 使用cpu生成rir时，用到了多进程加速，因此不需要这个
-# os.environ["CUDA_VISIBLE_DEVICES"] = str(4)  # choose the gpu to use
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(7)  # choose the gpu to use
 
 import json
 from typing import *
@@ -160,6 +160,7 @@ def generate_rir_gpu(
     fs: int,
     sound_velocity: float = 343,
     att_diff: float = None,
+    att_max: float = 60.0,
     beta: Optional[np.ndarray] = None,
 ):
     if len(pos_src) == 0:
@@ -172,7 +173,7 @@ def generate_rir_gpu(
         beta = [0] * 6
         Tdiff = None
     else:
-        Tmax = gpuRIR.att2t_SabineEstimator(60.0, RT60)
+        Tmax = gpuRIR.att2t_SabineEstimator(att_max, RT60)
         if att_diff is not None:
             Tdiff = gpuRIR.att2t_SabineEstimator(att_diff, RT60)
             nb_img = gpuRIR.t2n(Tdiff, room_sz)
@@ -210,7 +211,10 @@ def plot_room(room_sz: Union[List[float], np.ndarray], pos_src: np.ndarray, pos_
     if len(pos_rcv) > 2:
         # draw the first half mics with different color for checking the rotation
         ax.scatter(pos_rcv[:len(pos_rcv) // 2, 0], pos_rcv[:len(pos_rcv) // 2, 1], pos_rcv[:len(pos_rcv) // 2, 2], c='r')
-    ax.scatter(pos_src[:, 0], pos_src[:, 1], pos_src[:, 2])
+    if not isinstance(pos_src, list):
+        pos_src = [pos_src]
+    for i in range(len(pos_src)):
+        ax.scatter(pos_src[i][:, 0], pos_src[i][:, 1], pos_src[i][:, 2])
     if pos_noise is not None and len(pos_noise) > 0:
         ax.scatter(pos_noise[:, 0], pos_noise[:, 1], pos_noise[:, 2])
 
@@ -221,6 +225,32 @@ def plot_room(room_sz: Union[List[float], np.ndarray], pos_src: np.ndarray, pos_
     plt.show(block=True)
     if saveto is not None:
         plt.savefig("config/rirs/images/" + saveto + '.jpg')
+    plt.close()
+
+
+def plot_room_2d(room_sz: Union[List[float], np.ndarray], pos_src: np.ndarray, pos_rcv: np.ndarray, pos_noise: np.ndarray, saveto: str = None) -> None:
+    import matplotlib.pyplot as plt
+    plt.close('all')
+    fig = plt.figure(figsize=(room_sz[0] * 2, room_sz[1] * 2))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.scatter(pos_rcv[:, 0], pos_rcv[:, 1])
+    if len(pos_rcv) > 2:
+        # draw the first half mics with different color for checking the rotation
+        ax.scatter(pos_rcv[:len(pos_rcv) // 2, 0], pos_rcv[:len(pos_rcv) // 2, 1], c='r', s=1)
+    if not isinstance(pos_src, list):
+        pos_src = [pos_src]
+    for i in range(len(pos_src)):
+        ax.scatter(pos_src[i][:, 0], pos_src[i][:, 1], s=1)
+    if pos_noise is not None and len(pos_noise) > 0:
+        ax.scatter(pos_noise[:, 0], pos_noise[:, 1], s=30, c='green')
+
+    ax.set(xlabel="X", ylabel="Y")
+    ax.set_xlim([0, room_sz[0]])
+    ax.set_ylim([0, room_sz[1]])
+    plt.show(block=True)
+    # plt.show()
+    if saveto is not None:
+        plt.savefig("configs/rirs/images/" + saveto + '.jpg')
     plt.close()
 
 
@@ -313,28 +343,122 @@ def rotate(pos_rcv: np.ndarray, x_angle: Optional[float] = None, y_angle: Option
     return pos_rcv
 
 
+def generate_4points_sin_trajectory(
+        room_sz: Union[List[float], np.ndarray],  # the size of room
+        rcv_pos: np.ndarray,  # [N, 3]
+        min_src_array_dist: np.ndarray,  # [3]
+        min_src_boundary_dist: np.ndarray,  # [3]
+        src_z: float,  # the height of source
+        desired_dist_pts: float = 0.1,  # the distance between neighbouring points  点之间的间隔
+        equal_dist: bool = False,  # neighbouring points have equal distance
+        max_ratio: float = 3,  # maximum allowed distantce for not equal case
+):
+    # 移动声源：
+    # 1. 从房间的四个区域分别采用一个点
+    # 2. 按照区域将四个点连接起来. 每条连线沿着线方向每10cm采样一个点, 这样仿真超长语音的时候, 刚好可以沿着四个点转圈
+
+    xr, yr, zr = room_sz
+    xa, ya, za = min_src_array_dist
+    xb, yb, zb = min_src_boundary_dist
+    array_center = rcv_pos.mean(axis=0)
+    assert za == 0 and zb == 0, "not implemented"
+    # step 1: sample four points in four area of the room
+    # left-down area
+    src_pos_max = array_center + np.array([-xa, -ya, 0])
+    src_pos_min = np.array([0, 0, 0]) + np.array([xb, yb, 0])
+    src_pos_ld = src_pos_min + np.random.random(3) * (src_pos_max - src_pos_min)
+    src_pos_ld[2] = src_z
+    # right-down area
+    src_pos_max = array_center + np.array([xa, -ya, 0])
+    src_pos_min = np.array([xr, 0, 0]) + np.array([-xb, yb, 0])
+    src_pos_rd = src_pos_min + np.random.random(3) * (src_pos_max - src_pos_min)
+    src_pos_rd[2] = src_z
+    # right-top area
+    src_pos_max = array_center + np.array([xa, ya, 0])
+    src_pos_min = np.array([xr, yr, 0]) + np.array([-xb, -yb, 0])
+    src_pos_rt = src_pos_min + np.random.random(3) * (src_pos_max - src_pos_min)
+    src_pos_rt[2] = src_z
+    # left-top area
+    src_pos_max = array_center + np.array([-xa, ya, 0])
+    src_pos_min = np.array([0, yr, 0]) + np.array([xb, -yb, 0])
+    src_pos_lt = src_pos_min + np.random.random(3) * (src_pos_max - src_pos_min)
+    src_pos_lt[2] = src_z
+
+    # step 2: connects the four points in order. For each pair of points, sinusoidal oscilations are added to each point for each axis
+    trajs = []
+    for src_pos_ini, src_pos_end in [(src_pos_ld, src_pos_rd), (src_pos_rd, src_pos_rt), (src_pos_rt, src_pos_lt), (src_pos_lt, src_pos_ld)]:
+        dist_ini_end = np.sqrt(np.sum((src_pos_ini - src_pos_end)**2))
+        if equal_dist == False:
+            # solve p_end= p_ini + A*sin(w*nb_points+n*pi) + vec_mov*nb_points, so that the last point is p_end
+            nb_points = int(dist_ini_end / desired_dist_pts)
+            A = np.random.random(3) * np.array([xb, yb, 0])  # Magnitude oscilations with [xb,yb,0]
+            w = 2 * np.pi / nb_points * np.random.random(3) * 2  # Between 0 and 2 oscilations in each axis
+            vec_mov = ((src_pos_end - src_pos_ini) - A * np.sin(w * nb_points)) / nb_points
+            traj_pts = src_pos_ini + vec_mov * np.arange(nb_points)[:, np.newaxis] + A * np.sin(w * np.arange(0, nb_points)[:, np.newaxis])
+            while np.max(norm(traj_pts[1:] - traj_pts[:-1], axis=-1)) > max_ratio * desired_dist_pts:
+                A = np.random.random(3) * np.array([xb, yb, 0])  # Magnitude oscilations with [xb,yb,0]
+                w = 2 * np.pi / nb_points * np.random.random(3) * 2  # Between 0 and 2 oscilations in each axis
+                vec_mov = ((src_pos_end - src_pos_ini) - A * np.sin(w * nb_points)) / nb_points
+                traj_pts = src_pos_ini + vec_mov * np.arange(nb_points)[:, np.newaxis] + A * np.sin(w * np.arange(0, nb_points)[:, np.newaxis])
+            trajs.append(traj_pts)
+        else:
+            traj_pts = []
+            unit_vec = (src_pos_end - src_pos_ini) / dist_ini_end  # 起点指向终点的单位方向向量
+            A = np.random.random(3) * np.array([xb, yb, 0])  # Magnitude oscilations with [xb,yb,0]
+            w = 2 * np.pi * np.random.randint(1, 4, size=3)  # Between 1 and 2 times 2pi rad oscilations in each axis
+            # 沿unit_vec方向移动多长距离, 才使得移动后点与起点的距离接近于desired_dist_pts
+            x_vec = 0.0
+            while x_vec < dist_ini_end:
+                osc = A * np.sin(w * (x_vec / dist_ini_end))
+                p0 = src_pos_ini + unit_vec * x_vec + osc
+                traj_pts.append(p0)
+
+                def err_func(x_mov: float, x_vec: float, p0: np.ndarray, desired_dist_pts: float, A: np.ndarray, w: np.ndarray):
+                    # minimize the distance between current point and next point
+                    osc = A * np.sin(w * ((x_vec + x_mov) / dist_ini_end))
+                    p1 = src_pos_ini + unit_vec * (x_vec + x_mov) + osc
+                    dd = np.sqrt(np.sum((p1 - p0)**2))
+                    return np.abs(dd - desired_dist_pts)
+
+                for factor in [1.0, 1.5, 3]:
+                    res = minimize(err_func, x0=[desired_dist_pts / 10], bounds=[(0, desired_dist_pts * factor)], tol=desired_dist_pts / 100, args=(x_vec, p0, desired_dist_pts, A, w))
+                    if res.fun < desired_dist_pts / 100:
+                        break
+                x_vec = x_vec + res.x[0]
+                # print(res.x[0], res.fun)
+            traj_pts = np.array(traj_pts, dtype=np.float16)  # [N,3]
+            trajs.append(traj_pts)
+    traj_pts = np.concatenate(trajs, axis=0)
+    if (traj_pts >= 0).all() and (traj_pts <= np.array([room_sz])).all():
+        return traj_pts, np.stack([src_pos_ld, src_pos_rd, src_pos_rt, src_pos_lt], dtype=np.float16)
+    else:
+        # assert (traj_pts >= 0).all() and (traj_pts <= np.array([room_sz])).all(), "traj_pts out of the room"
+        return None, None  # return None if any points are out of the room
+
+
 def generate_rir_cfg_list(
-        index: Optional[int] = None,
-        spk_num: int = 1,
-        noise_num: int = 0,
-        room_size_lims: Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]] = ((3, 8), (3, 8), (3, 4)),
-        mic_zlim: Tuple[float, float] = (1.0, 1.5),
-        spk_zlim: Tuple[float, float] = (1.0, 1.8),
-        RT60_lim: Tuple[float, float] = (0.1, 0.6),
-        rir_nums: Tuple[int, int, int] = (40000, 5000, 3000),
-        arr_geometry: Union[Literal['circular'], Literal['linear'], Literal['chime3'], Literal['libricss']] = 'libricss',
-        arr_radius: Tuple[float, float] = (0.1, 0.1),
-        arr_rotate_lims: Union[Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float]], Optional[Tuple[float, float]]], Literal['auto']] = 'auto',
-        arr_room_center_dist: Union[float, Literal['auto']] = 'auto',
-        wall_abs_weights_lims: Union[List[Tuple[float, float]], Literal['auto'], Literal[None]] = 'auto',
-        mic_num: int = 6,
-        mic_pos_var: float = 0,
-        spk_arr_dist: Union[Tuple[float, float], Literal['auto'], Literal['random']] = 'auto',
-        fs: int = 16000,
-        attn_diff: Tuple[Optional[float], Optional[float]] = (None, None),
-        save_to: Union[Literal['auto'], str] = 'auto',
-        rir_dir: str = 'dataset/rirs_generated',
-        seed: int = 2023,
+    index: Optional[int] = None,
+    spk_num: int = 1,
+    noise_num: int = 0,
+    room_size_lims: Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]] = ((3, 8), (3, 8), (3, 4)),
+    mic_zlim: Tuple[float, float] = (1.0, 1.5),
+    spk_zlim: Tuple[float, float] = (1.0, 1.8),
+    RT60_lim: Tuple[float, float] = (0.1, 0.6),
+    rir_nums: Tuple[int, int, int] = (40000, 5000, 3000),
+    arr_geometry: Union[Literal['circular'], Literal['linear'], Literal['chime3'], Literal['libricss']] = 'circular',
+    arr_radius: Optional[Tuple[float, float]] = (0.1, 0.1),
+    arr_rotate_lims: Union[Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float]], Optional[Tuple[float, float]]], Literal['auto']] = 'auto',
+    arr_room_center_dist: Union[float, Literal['auto']] = 'auto',
+    wall_abs_weights_lims: Union[List[Tuple[float, float]], Literal['auto'], Literal[None]] = 'auto',
+    mic_num: int = 6,
+    mic_pos_var: float = 0,
+    spk_arr_dist: Union[Tuple[float, float], Literal['auto'], Literal['random']] = 'auto',
+    trajectory: Optional[Tuple[str, float]] = None,
+    fs: int = 8000,
+    attn_diff: Tuple[Optional[float], Optional[float], Optional[float]] = (15.0, 15.0, 60.0),
+    save_to: Union[Literal['auto'], str] = 'auto',
+    rir_dir: str = 'dataset/rirs_generated',
+    seed: int = 2023,
 ):
     """configuration file generation
 
@@ -354,9 +478,10 @@ def generate_rir_cfg_list(
         wall_abs_weights_lims: the weights of wall absorbtion coefficients. TODO: add half-open, 
         mic_num: the number of microphones.
         mic_pos_var: microphone array position variation (m).
-        spk_arr_dist: the distance range between the center of microphone array and speaker.
+        spk_arr_dist: the distance range between the center of microphone array and speaker. For trajectory, this parameter is used as the minimum distance between microphone array and speaker.
+        trajectory: the trajectory type of each source and the distance between adjacent trajectory points (m). can be `None` or something like (`4points+sin`, 0.05).
         fs: sample rate.
-        attn_diff: starts from what attenuation (dB) to use diffuse model to generate rir for speech and noise. diffuse model will speed up the simulation but is not accurate?
+        attn_diff: starts from what attenuation (dB) to use diffuse model to generate rir for speech and noise, and the maximum attenuation (dB). diffuse model will speed up the simulation but is not accurate?
         save_to: save the configuration file to.
         rir_dir: the dir to save generated rirs
         seed: the random seeds.
@@ -364,6 +489,7 @@ def generate_rir_cfg_list(
     if index is None:
         # set parameters and start multiprocessing generation
         assert arr_geometry in ['circular', 'linear', 'chime3', 'libricss'], "only supports circular, linear, chime3 and libricss array for now"
+        assert trajectory is None or trajectory[0] in ['4points+sin'], trajectory
 
         if arr_geometry == 'circular' or arr_geometry == 'linear':
             if arr_rotate_lims == 'auto':
@@ -373,6 +499,7 @@ def generate_rir_cfg_list(
             if arr_room_center_dist == 'auto':
                 arr_room_center_dist = 0.5
         elif arr_geometry == 'chime3':
+            arr_radius, mic_num = None, 6
             if arr_rotate_lims == 'auto':
                 arr_rotate_lims = ((0, 2 * np.pi), (0, 2 * np.pi), (0, 2 * np.pi))
             if spk_arr_dist == 'auto':
@@ -389,6 +516,9 @@ def generate_rir_cfg_list(
             if arr_room_center_dist == 'auto':
                 arr_room_center_dist = 1.0
 
+        if trajectory is not None and trajectory[0].startswith('4points+sin'):
+            spk_arr_dist = [max(arr_radius)] * 2 if spk_arr_dist == 'random' else [min(spk_arr_dist)] * 2
+
         if wall_abs_weights_lims == 'auto':
             wall_abs_weights_lims = [(0.5, 1.0)] * 6
         elif wall_abs_weights_lims is None:
@@ -397,6 +527,7 @@ def generate_rir_cfg_list(
             assert len(wall_abs_weights_lims) == 6, "you should give the weights of six walls"
         if save_to == 'auto':
             save_to = os.path.join(rir_dir, 'rir_cfg.npz')
+        save_to = os.path.expanduser(save_to)
         args = locals().copy()  # capture the parameters passed to this function or their edited values
 
         if os.path.exists(save_to):
@@ -412,6 +543,10 @@ def generate_rir_cfg_list(
         print('generating rir cfgs. ', end=' ')
         import time
         ts = time.time()
+        # new_args = args.copy()
+        # del new_args['index']
+        # for i in range(rir_num):
+        #     generate_rir_cfg_list(i, **new_args)
         with multiprocessing.Pool(processes=multiprocessing.cpu_count() // 2) as p:
             new_args = args.copy()
             del new_args['index']
@@ -435,7 +570,7 @@ def generate_rir_cfg_list(
     xlim, ylim, zlim = room_size_lims
 
     # sample radius / RT60 / room_sz / abs_weights
-    array_r_this = uniform(*arr_radius)
+    array_r_this = uniform(*arr_radius) if arr_radius is not None else None
     RT60 = uniform(*RT60_lim)  # sample a RT60
     room_sz = [uniform(*xlim), uniform(*ylim), uniform(*zlim)]  # sample a room
     # resample if the RT60 could not be satisfied in this room
@@ -481,16 +616,35 @@ def generate_rir_cfg_list(
         pos_rcv = pos_rcv + uniform(low=-mic_pos_var, high=mic_pos_var, size=pos_rcv.shape)
 
     # sample speaker postions
-    pos_src = np.empty((spk_num, 3))
+    pos_src = []
     # all speaker's loc are randomly sampled
-    for iiii in range(0, spk_num):
-        pos_src[iiii, :] = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
-        if spk_arr_dist == 'random':
-            continue
-        while norm(pos_src[iiii, :] - mic_center) < spk_arr_dist[0] or norm(pos_src[iiii, :] - mic_center) > spk_arr_dist[1]:
-            # if the spk_mic_dis requirements are not satisfied, then resample a position
-            pos_src[iiii, :] = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
-
+    if trajectory is None:
+        for iiii in range(0, spk_num):
+            pos_src_i = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
+            while spk_arr_dist != 'random' and norm(pos_src_i - mic_center) < spk_arr_dist[0] or norm(pos_src_i - mic_center) > spk_arr_dist[1]:
+                # if the spk_mic_dis requirements are not satisfied, then resample a position
+                pos_src_i = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
+            pos_src.append(pos_src_i)
+        pos_src = np.array(pos_src, dtype=np.float16)
+    elif trajectory[0] in ['4points+sin', '4points+sin+eqdist']:
+        equal_dist = trajectory[0] == '4points+sin+eqdist'
+        spk_arr_dist = np.array(spk_arr_dist + [0])
+        for iiii in range(0, spk_num):
+            while True:
+                traj_i, points4 = generate_4points_sin_trajectory(
+                    room_sz=room_sz,
+                    rcv_pos=pos_rcv,
+                    min_src_array_dist=spk_arr_dist,
+                    min_src_boundary_dist=np.array([0.5, 0.5, 0]),
+                    src_z=uniform(spk_zlim[0], spk_zlim[1]),
+                    desired_dist_pts=trajectory[1],  # the desired distance (10cm) between neighbouring points
+                    equal_dist=equal_dist,
+                )
+                if traj_i is not None:
+                    break
+            pos_src.append(traj_i.astype(np.float16))
+    else:
+        raise Exception('Unknown trajectory type: ' + str(trajectory))
     # generate the positions of noise sources
     pos_noise = []
     for iiii in range(noise_num):
@@ -500,12 +654,13 @@ def generate_rir_cfg_list(
     # plot room
     # print(x_angle / np.pi * 180, y_angle / np.pi * 180, z_angle / np.pi * 180)
     # plot_room(room_sz=room_sz, pos_src=pos_src, pos_rcv=pos_rcv, pos_noise=pos_noise, saveto=None)
+    # plot_room_2d(room_sz=room_sz, pos_src=pos_src, pos_rcv=pos_rcv, pos_noise=pos_noise, saveto=None)
 
     par = {
         'index': index,
         'RT60': RT60,
         'room_sz': room_sz,
-        'pos_src': pos_src.astype(np.float32),
+        'pos_src': pos_src,
         'pos_rcv': pos_rcv.astype(np.float32),
         'pos_noise': pos_noise.astype(np.float32),
         # 'abs_weights': abs_weights,
@@ -522,9 +677,11 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
     attn_diff_speech = rir_cfg['args'].item()['attn_diff']
     attn_diff_noise = None
     if isinstance(attn_diff_speech, tuple):
-        attn_diff_noise = attn_diff_speech[1]
         attn_diff_speech = attn_diff_speech[0]
+        attn_diff_noise = attn_diff_speech[1]
+        attn_max = attn_diff_speech[2] if len(attn_diff_speech) >= 3 else 60.0
 
+    rir_dir = os.path.expanduser(rir_dir)
     if (Path(rir_dir) / 'train').exists() or (Path(rir_dir) / 'validation').exists() or (Path(rir_dir) / 'test').exists():
         ans = input("dir " + rir_dir + ' exists, still generate rir?(y/n)')
         assert ans in ['y', 'n'], ans
@@ -540,7 +697,7 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
         index = par['index']
         RT60 = par['RT60']
         room_sz = par['room_sz']
-        pos_src = np.array(par['pos_src'])
+        pos_src = par['pos_src']
         pos_rcv = np.array(par['pos_rcv'])
         pos_noise = np.array(par['pos_noise'])
         # abs_weights = np.array(par['abs_weights']) if 'abs_weights' in par else None
@@ -559,17 +716,25 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
                 return
             except:
                 ...
-        if not use_gpu:
-            rir = generate_rir_cpu(room_sz, pos_src, pos_rcv, RT60, fs, beta=beta)  # reverbrant rir
-            rir_dp = generate_rir_cpu(room_sz, pos_src, pos_rcv, 0, fs)  # direct path rir
-            rir_noise = generate_rir_cpu(room_sz, pos_noise, pos_rcv, RT60, fs, beta=beta)  # noise rir
+        gen_rir_func = generate_rir_gpu if use_gpu else generate_rir_cpu
+        kwargs_speech, kwargs_noise = ({'att_diff': attn_diff_speech, 'att_max': attn_max}, {'att_diff': attn_diff_noise, 'att_max': attn_max}) if use_gpu else ({}, {})
+        if isinstance(pos_src, np.ndarray):
+            rir = gen_rir_func(room_sz, pos_src, pos_rcv, RT60, fs, beta=beta, **kwargs_speech)  # reverbrant rir
+            rir_dp = gen_rir_func(room_sz, pos_src, pos_rcv, 0, fs)  # direct path rir
         else:
-            rir = generate_rir_gpu(room_sz, pos_src, pos_rcv, RT60, fs, att_diff=attn_diff_speech, beta=beta)  # reverbrant rir
-            rir_dp = generate_rir_gpu(room_sz, pos_src, pos_rcv, 0, fs)  # direct path rir
-            rir_noise = generate_rir_gpu(room_sz, pos_noise, pos_rcv, RT60, fs, att_diff=attn_diff_noise, beta=beta)  # noise rir, uses diffuse model after 20 dB attenuation
+            assert isinstance(pos_src, list), type(pos_src)
+            rir, rir_dp = [], []
+            for i in range(len(pos_src)):
+                rir_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, RT60, fs, beta=beta, **kwargs_speech)  # reverbrant rir
+                rir_dp_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, 0, fs)  # direct path rir
+                np.save(os.path.join(rir_dir, setdir, str(index) + f'_rir_{i}.npy'), arr=rir_i.astype(np.float16))
+                np.save(os.path.join(rir_dir, setdir, str(index) + f'_rir_dp_{i}.npy'), arr=rir_dp_i.astype(np.float16))
+                rir.append(str(index) + f'_rir_{i}.npy'), rir_dp.append(str(index) + f'_rir_dp_{i}.npy')
+            pos_src = np.array(pos_src, dtype=object)
+        rir_noise = gen_rir_func(room_sz, pos_noise, pos_rcv, RT60, fs, beta=beta, **kwargs_noise)  # noise rir, uses diffuse model after 20 dB attenuation
         if rir_noise is not None:
             rir_noise = rir_noise.astype(np.float16)
-        np.savez_compressed(save_to, fs=fs, RT60=RT60, room_sz=room_sz, pos_src=pos_src, pos_rcv=pos_rcv, pos_noise=pos_noise, rir=rir, rir_dp=rir_dp, rir_noise=rir_noise)
+        np.savez(save_to, fs=fs, RT60=RT60, room_sz=room_sz, pos_src=pos_src, pos_rcv=pos_rcv, pos_noise=pos_noise, rir=rir, rir_dp=rir_dp, rir_noise=rir_noise)
 
     if not use_gpu:
         from p_tqdm import p_map
@@ -588,6 +753,8 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
 
 if __name__ == '__main__':
     # CUDA_VISIBLE_DEVICES=0 python generate_rirs.py --help
+    # examples:
+    # CUDA_VISIBLE_DEVICES=5, python generate_rirs.py --spk_num=2 --room_size_lims="[[4,10],[4,10],[3,4]]" --mic_zlim="[1.4,1.6]" --spk_zlim="[1.3,1.8]" --RT60_lim=[0.1,1.0] --rir_nums=[20000,2000,2000] --arr_geometry=chime3 --arr_radius=null --mic_num=6 --spk_arr_dist=[0.5,0.5] --arr_room_center_dist=0.5 --attn_diff=[15.0,15.0,40.0] --fs=8000 --save_to=~/datasets/CHiME3_moving_rirs/rir_cfg.npz --rir_dir=~/datasets/CHiME3_moving_rirs --trajectory=['4points+sin',0.05]
     parser = ArgumentParser(description='code for generating RIRs by Changsheng Quan @ Westlake University')
     parser.add_function_arguments(generate_rir_cfg_list)  # add_argument for the function generate_rir_cfg_list
     parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu or not')

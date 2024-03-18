@@ -89,13 +89,31 @@ def get_metric_list_on_device(device: Optional[str]):
 
 
 def cal_metrics_functional(
-        metric_list: List[str],
-        preds: Tensor,
-        target: Tensor,
-        original: Optional[Tensor],
-        fs: int,
-        device_only: Literal['cpu', 'gpu', None] = None,  # cpu-only: pesq, stoi;
+    metric_list: List[str],
+    preds: Tensor,
+    target: Tensor,
+    original: Optional[Tensor],
+    fs: int,
+    device_only: Literal['cpu', 'gpu', None] = None,  # cpu-only: pesq, stoi;
+    chunk: Tuple[float, float] = None,  # (chunk length, hop length) in seconds for chunk-wise metric evaluation
+    suffix: str = "",
 ) -> Tuple[Dict[str, Tensor], Dict[str, Tensor], Dict[str, Tensor]]:
+    metrics, input_metrics, imp_metrics = {}, {}, {}
+    if chunk is not None:
+        clen, chop = int(fs * chunk[0]), int(fs * chunk[1])
+        for i in range(int((preds.shape[-1] / fs - chunk[0]) / chunk[1]) + 1):
+            metrics_chunk, input_metrics_chunk, imp_metrics_chunk = cal_metrics_functional(
+                metric_list,
+                preds[..., i * chop:i * chop + clen],
+                target[..., i * chop:i * chop + clen],
+                original[..., i * chop:i * chop + clen] if original is not None else None,
+                fs,
+                device_only,
+                chunk=None,
+                suffix=f"_{i*chunk[1]+1}s-{i*chunk[1]+chunk[0]}s",
+            )
+            metrics.update(metrics_chunk), input_metrics.update(input_metrics_chunk), imp_metrics.update(imp_metrics_chunk)
+
     if device_only is None or device_only == 'cpu':
         preds_cpu = preds.detach().cpu()
         target_cpu = target.detach().cpu()
@@ -104,10 +122,6 @@ def cal_metrics_functional(
         preds_cpu = None
         target_cpu = None
         original_cpu = None
-
-    input_metrics = {}
-    metrics = {}
-    imp_metrics = {}
 
     for m in metric_list:
         mname = m.lower()
@@ -146,10 +160,11 @@ def cal_metrics_functional(
             raise ValueError('Unkown audio metric ' + m)
 
         if m.upper() == 'WB_PESQ' and fs == 8000:
-            warnings.warn("There is narrow band (nb) mode only when sampling rate is 8000Hz")
+            # warnings.warn("There is narrow band (nb) mode only when sampling rate is 8000Hz")
             continue  # Note there is narrow band (nb) mode only when sampling rate is 8000Hz
 
         try:
+            mname = mname + suffix
             m_val = metric_func().cpu().numpy()
             metrics[mname] = np.mean(m_val).item()
             metrics[mname + '_all'] = m_val.tolist()  # _all means not averaged
@@ -241,3 +256,11 @@ def recover_scale(preds: Tensor, mixture: Tensor, scale_src_together: bool, norm
         norm = torch.where(max_vals > 1, max_vals, 1)
         preds = preds / norm.unsqueeze(-1)
     return preds
+
+
+if __name__ == "__main__":
+    x, y, m = torch.rand((2, 8000 * 8)), torch.rand((2, 8000 * 8)), torch.rand((2, 8000 * 8))
+    m, im, mi = cal_metrics_functional(["si_sdr"], preds=x, target=y, original=m, fs=8000, chunk=[4, 1])
+    print(m)
+    print(im)
+    print(mi)

@@ -25,6 +25,10 @@ def new_non_linear(non_linear_type: str, dim_hidden: int, seq_last: bool) -> nn.
         return nn.Sigmoid()
     elif non_linear_type.lower() == 'relu':
         return nn.ReLU()
+    elif non_linear_type.lower() == 'leakyrelu':
+        return nn.LeakyReLU()
+    elif non_linear_type.lower() == 'elu':
+        return nn.ELU()
     else:
         raise Exception(non_linear_type)
 

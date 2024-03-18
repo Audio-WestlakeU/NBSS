@@ -10,3 +10,5 @@ pesq
 tensorboard
 pandas
 torcheval==0.0.6
+mamba-ssm
+causal-conv1d>=1.1.0

@@ -84,8 +84,8 @@ python SharedTrainer.py test --config=logs/SpatialNet/version_x/config.yaml \
 | network | file |
 |:---|:---|
 | NB-BLSTM [1] / NBC [2] / NBC2 [3] | models/arch/NBSS.py |
-| SpatialNet [4] |models/arch/SpatialNet.py|
-| online SpatialNet [5] | coming soon |
+| SpatialNet [4] | models/arch/SpatialNet.py |
+| online SpatialNet [5] | models/arch/OnlineSpatialNet.py |
 
 ## Note
 The dataset generation & training commands for the `NB-BLSTM`/`NBC`/`NBC2` are available in the `NBSS` branch.

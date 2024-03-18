@@ -134,6 +134,110 @@ def convolve(wav: ndarray, rir: ndarray, rir_target: ndarray, ref_channel: Optio
     return rvbt, target
 
 
+def convolve_traj(wav: np.ndarray, traj_rirs: np.ndarray, traj_rirs_tar: np.ndarray, samples_per_rir: Union[np.ndarray, int], ref_channel: Optional[int] = 0, align: bool = True) -> np.ndarray:
+    """Convolve wav by using a set of trajectory rirs (Note: the generated audio signal using this method has click noise)
+
+    Args:
+        wav: shape [time]
+        traj_rirs: shape [num_rirs, num_mics, num_samples]
+        traj_rirs_tar: shape [num_rirs, num_mics, num_samples]
+        samples_per_rir: the number of samples in wav for each trajectory rir
+        ref_channel: reference channel. Defaults to 0.
+        align: Defaults to True.
+
+    Returns:
+        np.ndarray: [num_mics, time]
+    """
+    assert wav.ndim == 1, "not implemented"
+    wav_samps = wav.shape[0]
+    if isinstance(samples_per_rir, np.ndarray):
+        assert samples_per_rir.ndim == 1
+        assert samples_per_rir.sum() == wav.shape[-1], "the number of samples specified in samples_per_rir should match that of the wav"
+    else:
+        if wav_samps % samples_per_rir == 0:
+            samples_per_rir = [samples_per_rir] * (wav_samps // samples_per_rir)
+        else:
+            samples_per_rir = [samples_per_rir] * (wav_samps // samples_per_rir) + [wav_samps % samples_per_rir]
+    (num_rirs, num_mics, rir_samps), rir_samps_t = traj_rirs.shape, traj_rirs_tar.shape[-1]
+    assert num_rirs == len(samples_per_rir), "the number of rirs should match the length of samples_per_rir"
+
+    rvbt = np.zeros((num_mics, rir_samps + wav_samps - 1), dtype=np.float32)
+    target = np.zeros((num_mics, rir_samps_t + wav_samps - 1), dtype=np.float32)
+    start_samp = 0
+    for i, n_samps in enumerate(samples_per_rir):
+        wav_i = wav[start_samp:start_samp + n_samps]
+        rir_i = traj_rirs[i]
+        rir_i_tar = traj_rirs_tar[i]
+        rvbt[:, start_samp:start_samp + n_samps + rir_samps - 1] += fftconvolve(wav_i[np.newaxis], rir_i, mode='full', axes=-1)
+        target[:, start_samp:start_samp + n_samps + rir_samps_t - 1] += fftconvolve(wav_i[np.newaxis], rir_i_tar, mode='full', axes=-1)
+        start_samp += n_samps
+
+    if align:
+        rir = traj_rirs_tar[0, ref_channel, ...]
+        delay = np.argmax(rir)
+        rvbt = rvbt[:, delay:delay + wav.shape[-1]]
+        target = target[:, delay:delay + wav.shape[-1]]
+    return rvbt, target
+
+
+def convolve_traj_with_win(wav: np.ndarray, traj_rirs: np.ndarray, samples_per_rir: int, wintype: str = 'trapezium20') -> np.ndarray:
+    """Convolve wav by using a set of trajectory rirs (Note: the generated audio signal using this method barely have click noise)
+
+    Args:
+        wav: shape [T]
+        traj_rirs: shape [num_rirs, num_mics, num_samples]
+        samples_per_rir: the number of samples in wav for each trajectory rir
+        wintype: hann, tri, or trapezium. by default, trapezium20 is used.
+
+    Returns:
+        np.ndarray: [num_mics, time]
+    """
+    assert wav.ndim == 1, "not implemented"
+    wav_samps = wav.shape[0]
+
+    hop = samples_per_rir
+    samples_per_rir = samples_per_rir * 2
+    num_rirs, num_mics, rir_samps = traj_rirs.shape
+
+    if wintype == 'hann':
+        win = np.hanning(samples_per_rir)
+    elif wintype.startswith('trapezium'):  # 左右一边10个点
+        n = int(wintype.replace('trapezium', ''))
+        assert hop - n > 0, hop
+        tri = np.arange(0, n) / (n - 1)
+        tri2 = np.arange((n - 1), -1, -1) / (n - 1)
+        zlen = (hop - n) // 2
+        onelen = hop - n - zlen
+        win = np.concatenate([np.zeros(zlen), tri, np.ones(onelen * 2), tri2, np.zeros(zlen)])
+    else:
+        assert wintype == 'tri', wintype
+        win = np.concatenate([np.arange(0, samples_per_rir // 2), np.arange(samples_per_rir // 2 - 1, -1, -1)]) / (samples_per_rir // 2 - 1)
+
+    out = np.zeros((num_mics, rir_samps + wav_samps - 1), dtype=np.float32)
+    for i, start_samp in enumerate(range(0, wav_samps + hop - 1, hop)):
+        rir_i = traj_rirs[i]
+
+        if start_samp == 0:
+            wav_i = wav[start_samp:start_samp + hop] * win[hop:]
+            out[:, start_samp:start_samp + hop + rir_samps - 1] += fftconvolve(wav_i[np.newaxis], rir_i, axes=-1)
+        elif wav.shape[-1] >= start_samp + hop:
+            wav_i = wav[start_samp - hop:start_samp + hop] * win
+            out[:, start_samp - hop:start_samp + hop + rir_samps - 1] += fftconvolve(wav_i[np.newaxis], rir_i, axes=-1)
+        else:
+            wav_i = wav[start_samp - hop:] * win[:wav.shape[-1] - start_samp + hop]
+            out[:, start_samp - hop:] += fftconvolve(wav_i[np.newaxis], rir_i, axes=-1)
+
+    return out
+
+
+def align(rir: np.ndarray, rvbt: np.ndarray, target: np.ndarray, src: np.ndarray):
+    assert rir.ndim == 1 and src.ndim == 1, (rir.shape, src.shape)
+    delay = np.argmax(rir)
+    rvbt = rvbt[:, delay:delay + src.shape[-1]]
+    target = target[:, delay:delay + src.shape[-1]]
+    return rvbt, target
+
+
 def convolve1(wav: ndarray, rir: ndarray, ref_channel: Optional[int] = 0, align: bool = True) -> Union[Tuple[ndarray, ndarray], ndarray]:
     assert wav.ndim == 1, wav.shape
     while wav.ndim < rir.ndim:
@@ -219,8 +323,8 @@ def cal_coeff_for_adjusting_relative_energy(wav1: ndarray, wav2: ndarray, target
         float: coeff
     """
     # compute averaged energy over time and channel
-    ae1 = np.sum(wav1**2) / np.product(wav1.shape)
-    ae2 = np.sum(wav2**2) / np.product(wav2.shape)
+    ae1 = np.sum(wav1**2) / np.prod(wav1.shape)
+    ae2 = np.sum(wav2**2) / np.prod(wav2.shape)
     if ae1 == 0 or ae2 == 0 or not np.isfinite(ae1) or not np.isfinite(ae2):
         return None
     # compute the coefficients
