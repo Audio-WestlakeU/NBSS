@@ -363,7 +363,6 @@ class OnlineSpatialNet(nn.Module):
                     rel_pos = self.pos.forward(slen=t, activate_recurrent=True)
                     mask.append(rel_pos)
         else:
-            assert self.n_lookahead == 0, (self.n_lookahead, 'not implemented')
             pos1 = torch.arange(start=0, end=slen, dtype=torch.long, device=device, requires_grad=False).unsqueeze(1)
             pos2 = torch.arange(start=0, end=slen, dtype=torch.long, device=device, requires_grad=False).unsqueeze(0)
             relative_pos = pos1 - pos2
@@ -401,7 +400,7 @@ if __name__ == '__main__':
         dim_squeeze=8,
         num_freqs=129,
         full_share=0,
-        attention='mhsa(251)',
+        attention='mamba(16,4)',
         rope=False,
     ).cuda()
     print(model)
