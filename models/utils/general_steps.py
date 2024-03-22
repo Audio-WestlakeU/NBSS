@@ -209,7 +209,7 @@ def on_train_start(self: pl.LightningModule, exp_name: str, model_name: str, num
                 f.write(str(self))
                 f.write('\n\n\n')
             # measure the model FLOPs, the num_chns here only means the original channels
-            write_FLOPs(model=self, save_dir=self.logger.log_dir, num_chns=num_chns, nfft=nfft, model_class_path=model_class_path)
+            # write_FLOPs(model=self, save_dir=self.logger.log_dir, num_chns=num_chns, nfft=nfft, model_class_path=model_class_path)
 
 
 def configure_optimizers(

@@ -1,3 +1,4 @@
+from typing import Any, Mapping
 import torch
 from torch import nn
 
@@ -24,8 +25,13 @@ class STFT(nn.Module):
         self.n_fft, self.n_hop, self.win_len = n_fft, n_hop, win_len if win_len is not None else n_fft
         self.repr = str((n_fft, n_hop, win, win_len))
 
-        assert win == 'hann_window', win
-        window = torch.hann_window(self.n_fft)
+        assert win in ['hann_window', 'sqrt_hann_window'], win
+        if win == 'hann_window':
+            window = torch.hann_window(self.n_fft)
+        else:
+            # For FT-JNF. Deep Non-linear Filters for Multi-channel Speech Enhancement and Separation
+            assert win == 'sqrt_hann_window', win
+            window = torch.sqrt(torch.hann_window(self.n_fft))
         self.register_buffer('window', window)
 
     def forward(self, X: Tensor, original_len: int = None, inverse=False) -> Any:
@@ -72,14 +78,29 @@ class STFT(nn.Module):
         X = X.reshape(-1, *shape[-2:])
         if X.is_cuda:
             with torch.autocast(device_type=X.device.type, dtype=torch.float32):  # use float32 for stft & istft
-                x = torch.istft(X, n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+                # iSTFT is problematic when batch size is larger than 16
+                # x = torch.istft(X, n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+                xs = []
+                for b in range(X.shape[0]):
+                    xb = torch.istft(X[b], n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+                    xs.append(xb)
+                x = torch.stack(xs, dim=0)
         else:
-            x = torch.istft(X, n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+            # iSTFT is problematic when batch size is larger than 16
+            # x = torch.istft(X, n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+            xs = []
+            for b in range(X.shape[0]):
+                xb = torch.istft(X[b], n_fft=self.n_fft, hop_length=self.n_hop, win_length=self.win_len, window=self.window, length=original_len)
+                xs.append(xb)
+            x = torch.stack(xs, dim=0)
         x = x.reshape(shape=shape[:-2] + [original_len])
         return x
 
     def extra_repr(self) -> str:
         return self.repr
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        return
 
 
 if __name__ == '__main__':
