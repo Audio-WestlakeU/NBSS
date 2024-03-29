@@ -395,7 +395,7 @@ def generate_4points_sin_trajectory(
             w = 2 * np.pi / nb_points * np.random.random(3) * 2  # Between 0 and 2 oscilations in each axis
             vec_mov = ((src_pos_end - src_pos_ini) - A * np.sin(w * nb_points)) / nb_points
             traj_pts = src_pos_ini + vec_mov * np.arange(nb_points)[:, np.newaxis] + A * np.sin(w * np.arange(0, nb_points)[:, np.newaxis])
-            while np.max(norm(traj_pts[1:] - traj_pts[:-1], axis=-1)) > max_ratio * desired_dist_pts:
+            while len(traj_pts) > 1 and np.max(norm(traj_pts[1:] - traj_pts[:-1], axis=-1)) > max_ratio * desired_dist_pts:
                 A = np.random.random(3) * np.array([xb, yb, 0])  # Magnitude oscilations with [xb,yb,0]
                 w = 2 * np.pi / nb_points * np.random.random(3) * 2  # Between 0 and 2 oscilations in each axis
                 vec_mov = ((src_pos_end - src_pos_ini) - A * np.sin(w * nb_points)) / nb_points
@@ -681,7 +681,7 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
         attn_diff_noise = attn_diff[1]
         attn_max = attn_diff[2] if len(attn_diff) >= 3 else 60.0
     else:
-        attn_diff_speech = attn_diff # for old config
+        attn_diff_speech = attn_diff  # for old config
 
     rir_dir = os.path.expanduser(rir_dir)
     if (Path(rir_dir) / 'train').exists() or (Path(rir_dir) / 'validation').exists() or (Path(rir_dir) / 'test').exists():
