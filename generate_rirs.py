@@ -669,7 +669,7 @@ def generate_rir_cfg_list(
     return par
 
 
-def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[int, int, int], use_gpu: bool):
+def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[int, int, int], use_gpu: bool, split_trajectory: Optional[int] = None):
     train_rir_num, val_rir_num, test_rir_num = rir_nums
 
     pars = rir_cfg['rir_pars']
@@ -727,8 +727,21 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
             assert isinstance(pos_src, list), type(pos_src)
             rir, rir_dp = [], []
             for i in range(len(pos_src)):
-                rir_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, RT60, fs, beta=beta, **kwargs_speech)  # reverbrant rir
-                rir_dp_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, 0, fs)  # direct path rir
+                if split_trajectory is None:
+                    rir_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, RT60, fs, beta=beta, **kwargs_speech)  # reverbrant rir
+                    rir_dp_i = gen_rir_func(room_sz, pos_src[i], pos_rcv, 0, fs)  # direct path rir
+                else:
+                    # split trajectory for solving out of memory issue
+                    assert split_trajectory > 0, split_trajectory
+                    rir_i, rir_dp_i = [], []
+                    pos_src_list = np.array_split(pos_src[i], np.ceil(len(pos_src[i]) / split_trajectory), axis=0)
+                    for pos_src_i in pos_src_list:
+                        rir_i_i = gen_rir_func(room_sz, pos_src_i, pos_rcv, RT60, fs, beta=beta, **kwargs_speech)  # reverbrant rir
+                        rir_dp_i_i = gen_rir_func(room_sz, pos_src_i, pos_rcv, 0, fs)  # direct path rir
+                        rir_i.append(rir_i_i), rir_dp_i.append(rir_dp_i_i)
+                    rir_i = np.concatenate(rir_i, axis=0)
+                    rir_dp_i = np.concatenate(rir_dp_i, axis=0)
+
                 np.save(os.path.join(rir_dir, setdir, str(index) + f'_rir_{i}.npy'), arr=rir_i.astype(np.float16))
                 np.save(os.path.join(rir_dir, setdir, str(index) + f'_rir_dp_{i}.npy'), arr=rir_dp_i.astype(np.float16))
                 rir.append(str(index) + f'_rir_{i}.npy'), rir_dp.append(str(index) + f'_rir_dp_{i}.npy')
