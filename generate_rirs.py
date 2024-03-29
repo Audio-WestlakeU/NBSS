@@ -621,7 +621,7 @@ def generate_rir_cfg_list(
     if trajectory is None:
         for iiii in range(0, spk_num):
             pos_src_i = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
-            while spk_arr_dist != 'random' and norm(pos_src_i - mic_center) < spk_arr_dist[0] or norm(pos_src_i - mic_center) > spk_arr_dist[1]:
+            while spk_arr_dist != 'random' and (norm(pos_src_i - mic_center) < spk_arr_dist[0] or norm(pos_src_i - mic_center) > spk_arr_dist[1]):
                 # if the spk_mic_dis requirements are not satisfied, then resample a position
                 pos_src_i = uniform(0.5, room_sz[0] - 0.5), uniform(0.5, room_sz[1] - 0.5), uniform(spk_zlim[0], spk_zlim[1])
             pos_src.append(pos_src_i)
@@ -674,12 +674,14 @@ def generate_rir_files(rir_cfg: Dict[str, Any], rir_dir: str, rir_nums: Tuple[in
 
     pars = rir_cfg['rir_pars']
     fs = rir_cfg['args'].item()['fs']
-    attn_diff_speech = rir_cfg['args'].item()['attn_diff']
+    attn_diff = rir_cfg['args'].item()['attn_diff']
     attn_diff_noise = None
-    if isinstance(attn_diff_speech, tuple):
-        attn_diff_speech = attn_diff_speech[0]
-        attn_diff_noise = attn_diff_speech[1]
-        attn_max = attn_diff_speech[2] if len(attn_diff_speech) >= 3 else 60.0
+    if isinstance(attn_diff, tuple):
+        attn_diff_speech = attn_diff[0]
+        attn_diff_noise = attn_diff[1]
+        attn_max = attn_diff[2] if len(attn_diff) >= 3 else 60.0
+    else:
+        attn_diff_speech = attn_diff # for old config
 
     rir_dir = os.path.expanduser(rir_dir)
     if (Path(rir_dir) / 'train').exists() or (Path(rir_dir) / 'validation').exists() or (Path(rir_dir) / 'test').exists():
