@@ -489,7 +489,7 @@ def generate_rir_cfg_list(
     if index is None:
         # set parameters and start multiprocessing generation
         assert arr_geometry in ['circular', 'linear', 'chime3', 'libricss'], "only supports circular, linear, chime3 and libricss array for now"
-        assert trajectory is None or trajectory[0] in ['4points+sin'], trajectory
+        assert trajectory is None or trajectory[0] in ['4points+sin', '4points+sin+eqdist'], trajectory
 
         if arr_geometry == 'circular' or arr_geometry == 'linear':
             if arr_rotate_lims == 'auto':
