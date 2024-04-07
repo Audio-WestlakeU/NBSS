@@ -177,7 +177,7 @@ class CHiME3MovingDataset(Dataset):
                 which_point = [rng.integers(low=0, high=rir_spk.shape[0]) for rir_spk in rir]
                 rir = [rir_spk[which_point[i]] for i, rir_spk in enumerate(rir)]
                 rir_target = [rir_spk[which_point[i]] for i, rir_spk in enumerate(rir_target)]
-            rvbts, targets = zip(*[convolve(wav=wav, rir=rir_spk, rir_target=rir_spk_t, ref_channel=0, align=True) for (wav, rir_spk, rir_spk_t) in zip(cleans, rir, rir_target)])
+            rvbts, targets = zip(*[convolve_v2(wav=wav, rir=rir_spk, rir_target=rir_spk_t, ref_channel=0, align=True) for (wav, rir_spk, rir_spk_t) in zip(cleans, rir, rir_target)])
         else:
             speed_this = rng.uniform(low=self.speed[0], high=self.speed[1], size=1)
             samples_per_rir = np.round(self.adjacent_points_distance / speed_this * sr_rir).astype(np.int32)
@@ -201,7 +201,7 @@ class CHiME3MovingDataset(Dataset):
                 # convolve_traj
                 rvbts_i = convolve_traj_with_win(wav=wav, traj_rirs=rir_spk, samples_per_rir=nsamp_spk, wintype='trapezium20')
                 targets_i = convolve_traj_with_win(wav=wav, traj_rirs=rir_spk_t, samples_per_rir=nsamp_spk, wintype='trapezium20')
-                rvbts_i, targets_i = align(rir=rir_spk[0, 0], rvbt=rvbts_i, target=targets_i, src=wav)
+                rvbts_i, targets_i = align(rir=rir_spk_t[0, 0], rvbt=rvbts_i, target=targets_i, src=wav)
                 rvbts.append(rvbts_i), targets.append(targets_i)
         rvbts, targets = np.stack(rvbts, axis=0), np.stack(targets, axis=0)
 

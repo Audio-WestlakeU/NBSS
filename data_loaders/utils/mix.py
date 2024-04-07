@@ -133,6 +133,20 @@ def convolve(wav: ndarray, rir: ndarray, rir_target: ndarray, ref_channel: Optio
         target = target[:, delay:delay + wav.shape[-1]]
     return rvbt, target
 
+def convolve_v2(wav: ndarray, rir: ndarray, rir_target: ndarray, ref_channel: Optional[int] = 0, align: bool = True) -> Tuple[ndarray, ndarray]:
+    assert wav.ndim == 1, wav.shape
+    assert rir.ndim == 2 and rir_target.ndim == 2, (rir.shape, rir_target.shape)
+
+    rvbt = fftconvolve(wav[np.newaxis, :], rir, mode='full', axes=-1)
+    target = rvbt if rir is rir_target else fftconvolve(wav[np.newaxis, :], rir_target, mode='full', axes=-1)
+    if align:
+        # Note: don't take the dry clean source as target if the ref_channel is not correct
+        rir_align = rir_target[ref_channel, ...] # use rir_target rather than rir
+        delay = np.argmax(rir_align)
+        rvbt = rvbt[:, delay:delay + wav.shape[-1]]
+        target = target[:, delay:delay + wav.shape[-1]]
+    return rvbt, target
+
 
 def convolve_traj(wav: np.ndarray, traj_rirs: np.ndarray, traj_rirs_tar: np.ndarray, samples_per_rir: Union[np.ndarray, int], ref_channel: Optional[int] = 0, align: bool = True) -> np.ndarray:
     """Convolve wav by using a set of trajectory rirs (Note: the generated audio signal using this method has click noise)
