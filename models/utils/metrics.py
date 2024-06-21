@@ -9,15 +9,16 @@ import torch
 import pesq as pesq_backend
 import numpy as np
 from typing import *
+from models.utils.dnsmos import deep_noise_suppression_mean_opinion_score
 
-ALL_AUDIO_METRICS = ['SDR', 'SI_SDR', 'SI_SNR', 'SNR', 'NB_PESQ', 'WB_PESQ', 'STOI']
+ALL_AUDIO_METRICS = ['SDR', 'SI_SDR', 'SI_SNR', 'SNR', 'NB_PESQ', 'WB_PESQ', 'STOI', 'DNSMOS', 'pDNSMOS']
 
 
 def get_metric_list_on_device(device: Optional[str]):
     metric_device = {
-        None: ['SDR', 'SI_SDR', 'SNR', 'SI_SNR', 'NB_PESQ', 'WB_PESQ', 'STOI', 'ESTOI'],
+        None: ['SDR', 'SI_SDR', 'SNR', 'SI_SNR', 'NB_PESQ', 'WB_PESQ', 'STOI', 'ESTOI', 'DNSMOS', 'pDNSMOS'],
         "cpu": ['NB_PESQ', 'WB_PESQ', 'STOI', 'ESTOI'],
-        "gpu": ['SDR', 'SI_SDR', 'SNR', 'SI_SNR'],
+        "gpu": ['SDR', 'SI_SDR', 'SNR', 'SI_SNR', 'DNSMOS', 'pDNSMOS'],
     }
     return metric_device[device]
 
@@ -90,6 +91,12 @@ def cal_metrics_functional(
         elif m.upper() == 'ESTOI':
             metric_func = lambda: short_time_objective_intelligibility(preds_cpu, target_cpu, fs, extended=True)
             input_metric_func = lambda: short_time_objective_intelligibility(original_cpu, target_cpu, fs, extended=True)
+        elif m.upper() == 'DNSMOS':
+            metric_func = lambda: deep_noise_suppression_mean_opinion_score(preds, fs, False)
+            input_metric_func = lambda: deep_noise_suppression_mean_opinion_score(original, fs, False)
+        elif m.upper() == 'PDNSMOS':  # personalized DNSMOS
+            metric_func = lambda: deep_noise_suppression_mean_opinion_score(preds, fs, True)
+            input_metric_func = lambda: deep_noise_suppression_mean_opinion_score(original, fs, True)
         else:
             raise ValueError('Unkown audio metric ' + m)
 
@@ -98,6 +105,26 @@ def cal_metrics_functional(
             continue  # Note there is narrow band (nb) mode only when sampling rate is 8000Hz
 
         try:
+            if mname == 'dnsmos':
+                # p808_mos, mos_sig, mos_bak, mos_ovr
+                m_val = metric_func().cpu().numpy()
+
+                for idx, mid in enumerate(['p808', 'sig', 'bak', 'ovr']):
+                    mname_i = mname + '_' + mid + suffix
+                    metrics[mname_i] = np.mean(m_val[..., idx]).item()
+                    metrics[mname_i + '_all'] = m_val[..., idx].tolist()
+                    if original is None:
+                        continue
+
+                    if 'input_' + mname_i not in input_metrics.keys():
+                        im_val = input_metric_func().cpu().numpy()
+                        input_metrics['input_' + mname_i] = np.mean(im_val[..., idx]).item()
+                        input_metrics['input_' + mname_i + '_all'] = im_val[..., idx].tolist()
+
+                    imp_metrics[mname_i + '_i'] = metrics[mname_i] - input_metrics['input_' + mname_i]  # _i means improvement
+                    imp_metrics[mname_i + '_all' + '_i'] = (m_val[..., idx] - im_val[..., idx]).tolist()
+                continue
+
             mname = mname + suffix
             m_val = metric_func().cpu().numpy()
             metrics[mname] = np.mean(m_val).item()
@@ -122,7 +149,6 @@ def cal_metrics_functional(
             imp_metrics[mname + '_i' + '_all'] = None
 
     return metrics, input_metrics, imp_metrics
-
 
 def mypesq(preds: np.ndarray, target: np.ndarray, mode: str, fs: int) -> np.ndarray:
     # 使用ndarray是因为tensor会在linux上会导致一些多进程的错误
