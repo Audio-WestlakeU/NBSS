@@ -12,11 +12,13 @@ More information about our group can be found at [https://audio.westlake.edu.cn]
 
 ## Performance
 SpatialNet: 
-- SOTA performance on 6 public datasets for all the three multichannel tasks (Speech Separation, Denoising and Dereverberation). Below is the results on the SMS-WSJ dataset.
-<img src="images/results.png" width="550">
-
+- SOTA performance for
+  - All the three multichannel tasks (Speech Separation, Denoising and Dereverberation)
+  - Online and offline processing
+  - Static and moving speaker cases
+  <img src="images/results.png" width="550">
 - Relatively low computational cost and small model size.
-<img src="images/model_size_and_flops.png" width="550">
+  <br><img src="images/model_size_and_flops.png" width="550">
 
 ## Requirements
 
