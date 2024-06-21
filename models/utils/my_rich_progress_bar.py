@@ -23,7 +23,10 @@ class MyRichProgressBar(RichProgressBar):
                 if isinstance(v, Tensor):
                     value = v.item()
                 if isinstance(value, float):
-                    infos += k + f"={value:.4f}  "
+                    if abs(value) < 1:
+                        infos += k + f"={value:.4e}  "
+                    else:
+                        infos += k + f"={value:.4f}  "
                 else:
                     infos += k + f"={value}  "
             if len(metrics) > 0:

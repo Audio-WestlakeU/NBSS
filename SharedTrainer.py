@@ -362,7 +362,7 @@ class TrainCLI(BaseCLI):
             "model_checkpoint.monitor": "val/metric",
             "model_checkpoint.mode": "max",
             "model_checkpoint.every_n_epochs": 1,
-            "model_checkpoint.save_top_k": 5,  # save all checkpoints
+            "model_checkpoint.save_top_k": -1,  # save all checkpoints
             "model_checkpoint.auto_insert_metric_name": False,
             "model_checkpoint.save_last": True
         }

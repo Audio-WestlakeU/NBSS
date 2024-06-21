@@ -1,6 +1,7 @@
 import json
 import os
 from typing import *
+from pathlib import Path
 
 import pytorch_lightning as pl
 import soundfile as sf
@@ -122,19 +123,41 @@ def on_predict_batch_end(
     os.makedirs(save_dir, exist_ok=True)
 
     if not isinstance(batch, Tensor):
-        _, _, paras = batch
+        input, target, paras = batch
         if 'saveto' in paras[0]:
             for b in range(len(paras)):
                 saveto = paras[b]['saveto']
                 if isinstance(saveto, str):
                     saveto = [saveto]
-                assert isinstance(saveto, list), type(saveto)
+
+                assert isinstance(saveto, list), ('saveto should be a list of size num_speakers', type(saveto))
                 for spk, spk_saveto in enumerate(saveto):
-                    y = outputs[b][spk]
-                    assert len(y.shape) == 1, y.shape
-                    save_path = save_dir + '/' + spk_saveto
-                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    sf.write(save_path, y.detach().cpu().numpy(), samplerate=paras[b]['sample_rate'])
+                    if isinstance(spk_saveto, dict):
+                        input_saveto = spk_saveto['input'] if 'input' in spk_saveto else None
+                        target_saveto = spk_saveto['target'] if 'target' in spk_saveto else None
+                        pred_saveto = spk_saveto['prediction'] if 'prediction' in spk_saveto else None
+                    else:
+                        pred_saveto, input_saveto, target_saveto = spk_saveto, None, None
+
+                    # save predictions
+                    if pred_saveto:
+                        y = outputs[b][spk]
+                        assert len(y.shape) == 1, y.shape
+                        save_path = Path(save_dir) / pred_saveto
+                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                        sf.write(save_path, y.detach().cpu().numpy(), samplerate=paras[b]['sample_rate'])
+                    # save input
+                    if input_saveto:
+                        y = input[b].T  # [T,CHN]
+                        save_path = Path(save_dir) / input_saveto
+                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                        sf.write(save_path, y.detach().cpu().numpy(), samplerate=paras[b]['sample_rate'])
+                    # # save target
+                    # if input_saveto and target is not None:
+                    #     y = target[b, spk, :, :].T  # [T,CHN]
+                    #     save_path = save_dir + '/' + target_saveto
+                    #     os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    #     sf.write(save_path, y.detach().cpu().numpy(), samplerate=paras[b]['sample_rate'])
 
 
 def on_load_checkpoint(
@@ -164,13 +187,18 @@ def on_load_checkpoint(
         checkpoint['state_dict'] = state_dict
 
     # rename weights for removing _orig_mod in name
-    if compile == False:
-        state_dict = checkpoint['state_dict']
-        state_dict_new = dict()
-        for k, v, in state_dict.items():
-            state_dict_new[k.replace('_orig_mod.', '')] = v
-        checkpoint['state_dict'] = state_dict_new
+    name_mapping = {} # {name without _orig_mod: the actual name}
+    parameters = self.state_dict()
+    for k, v in parameters.items():
+        name_mapping[k.replace('_orig_mod.', '')] = k
 
+    state_dict = checkpoint['state_dict']
+    state_dict_new = dict()
+    for k, v, in state_dict.items():
+        state_dict_new[name_mapping[k.replace('_orig_mod.', '')]] = v
+    checkpoint['state_dict'] = state_dict_new
+
+    # reset optimizer and lr_scheduler
     if reset is not None:
         for key in reset:
             assert key in ['optimizer', 'lr_scheduler'], f'unsupported reset key {key}'
@@ -228,7 +256,6 @@ def configure_optimizers(
         else:
             allowed_minimum = torch.finfo(torch.float16).eps
             assert optimizer_kwargs['eps'] >= allowed_minimum, f"You should specify an eps greater than the allowed minimum of the FP16 precision: {optimizer_kwargs['eps']} {allowed_minimum}"
-
     optimizer = getattr(torch.optim, optimizer)(self.parameters(), **optimizer_kwargs)
 
     if lr_scheduler is not None and len(lr_scheduler) > 0:
