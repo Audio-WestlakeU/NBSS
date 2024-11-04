@@ -12,12 +12,9 @@ More information about our group can be found at [https://audio.westlake.edu.cn]
 
 ## Performance
 SpatialNet: 
-- SOTA performance for
-  - All the three multichannel tasks (Speech Separation, Denoising and Dereverberation)
-  - Online and offline processing
-  - Static and moving speaker cases
-  <img src="images/results.png" width="550">
-- Relatively low computational cost and small model size.
+- Performance
+  <br><img src="images/results.png" width="550">
+- Computational cost
   <br><img src="images/model_size_and_flops.png" width="550">
 
 ## Requirements
